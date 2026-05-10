@@ -26,6 +26,20 @@ The canvas is the structured memory. The right panel is the working surface. Tog
 
 The goal is to make reasoning visible without overwhelming the user with too many tags, labels, or decorative states.
 
+## Product Screenshots
+
+### Workspace Overview
+
+The full workspace combines the reasoning canvas with the right-side workspace panel. The canvas shows the structure of the project while the panel highlights alignment signals and unresolved reasoning that can be acted on.
+
+![Thinking Machine workspace overview](docs/screenshots/workspace-overview.png)
+
+### Reasoning Graph Close-Up
+
+The canvas uses draggable reasoning nodes and lightweight relationship labels. Node ports stay neutral, while relationship state is communicated through the edge color and alignment pill.
+
+![Reasoning graph close-up](docs/screenshots/reasoning-graph-closeup.png)
+
 ## Current Features
 
 ### Project Workspace
