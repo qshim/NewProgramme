@@ -3,32 +3,55 @@
 import MetaPill from "@/components/thinkingMachine/ui/MetaPill";
 import { getAlignmentVisualMeta } from "@/lib/thinkingMachine/reasoningAlignment";
 
-function Section({ title, items = [], hideTitle = false }) {
+function EmphasizedSummary({ summary = "" }) {
+  const text = String(summary || "");
+  const clarificationIndex = text.toLowerCase().indexOf("clarification");
+  const needsIndex = text.indexOf(" still needs ");
+
+  if (needsIndex === -1) {
+    return <>{text}</>;
+  }
+
+  const nodeTitle = text.slice(0, needsIndex);
+  const beforeClarification = clarificationIndex > -1 ? text.slice(needsIndex, clarificationIndex) : text.slice(needsIndex);
+  const afterClarification = clarificationIndex > -1 ? text.slice(clarificationIndex + "clarification".length) : "";
+
+  return (
+    <>
+      <strong className="font-medium text-slate-800">{nodeTitle}</strong>
+      {beforeClarification}
+      {clarificationIndex > -1 ? (
+        <strong className="font-medium text-[#9F1239]">clarification</strong>
+      ) : null}
+      {afterClarification}
+    </>
+  );
+}
+
+function Section({ items = [], onSelectSignal }) {
   if (!items.length) return null;
 
   return (
     <div>
-      {hideTitle ? null : (
-        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">{title}</div>
-      )}
-      <div className={`${hideTitle ? "" : "mt-2 "}flex flex-col gap-1.5`}>
+      <div className="flex flex-col gap-1.5">
         {items.map((item) => {
           const meta = getAlignmentVisualMeta(item.state);
           return (
-            <div key={item.id} className="rounded-xl border border-slate-200/80 bg-white/82 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] font-semibold text-slate-700">{item.label}</div>
-                {item.state !== "partially_aligned" ? (
-                  <MetaPill className={meta.chipClassName}>{meta.label}</MetaPill>
-                ) : null}
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelectSignal?.(item)}
+              className={`group w-full cursor-pointer rounded-xl border px-3 py-2 text-left transition hover:-translate-y-[1px] hover:shadow-[0_14px_34px_rgba(15,23,42,0.035)] ${meta.cardClassName}`}
+            >
+              <div className="text-[12px] leading-relaxed text-slate-600">
+                <EmphasizedSummary summary={item.summary} />
               </div>
-              <div
-                className="text-[11px] leading-relaxed text-slate-600"
-                style={{ marginTop: item.state === "partially_aligned" ? 10 : 7 }}
-              >
-                {item.summary}
-              </div>
-            </div>
+              {item.state === "unresolved" ? (
+                <div className="mt-1.5 text-right text-[10px] font-medium text-[#9F1239]/45 transition group-hover:text-[#9F1239]/80">
+                  Resolve
+                </div>
+              ) : null}
+            </button>
           );
         })}
       </div>
@@ -39,6 +62,7 @@ function Section({ title, items = [], hideTitle = false }) {
 export default function AlignmentSummaryCard({
   selectedNode,
   summary,
+  onSelectSignal,
 }) {
   const counts = summary?.counts || {};
   const sections = summary?.sections || {};
@@ -49,18 +73,14 @@ export default function AlignmentSummaryCard({
     (counts.in_tension || 0) +
     (counts.contradictory || 0);
   const divergingCount = (counts.in_tension || 0) + (counts.contradictory || 0);
-  const alignedCount = (counts.aligned || 0) + (counts.partially_aligned || 0);
+  const alignedCount = counts.aligned || 0;
+  const partialAlignmentCount = counts.partially_aligned || 0;
 
   return (
-    <div className="rounded-2xl border border-white/70 bg-white/78 p-3 shadow-[0_14px_26px_rgba(15,23,42,0.08)] backdrop-blur-[14px]">
+    <div className="px-0.5 py-1">
       <div className="flex items-start justify-between gap-2">
         <div style={{ position: "relative", left: 3 }}>
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Reasoning alignment</div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            {selectedNode
-              ? `Signals around ${selectedNode.data?.title || "the selected node"}.`
-              : "Signals from the visible reasoning graph."}
-          </div>
         </div>
         <MetaPill className="bg-slate-100 text-slate-600 whitespace-nowrap shrink-0">
           {totalSignals} signals
@@ -71,20 +91,17 @@ export default function AlignmentSummaryCard({
         <div className="mt-3 space-y-3">
           <div className="flex flex-wrap items-center gap-1.5">
             {alignedCount > 0 ? (
-              <MetaPill className="bg-emerald-100 text-emerald-700">
-                Shared direction {alignedCount}
+              <MetaPill className="bg-yellow-100 text-yellow-700">
+                Aligned {alignedCount}
               </MetaPill>
             ) : null}
-            {alignedCount > 0 && (sections.aligned?.length || 0) > 0 ? (
-              <span
-                className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400"
-                style={{ marginLeft: 6 }}
-              >
-                Where reasoning is aligned
-              </span>
+            {partialAlignmentCount > 0 ? (
+              <MetaPill className="bg-emerald-100 text-emerald-700">
+                Partial alignment {partialAlignmentCount}
+              </MetaPill>
             ) : null}
             {(counts.unresolved || 0) > 0 ? (
-              <MetaPill className="bg-slate-100 text-slate-600">
+              <MetaPill className="bg-pink-100 text-[#9F1239]">
                 Unresolved {(counts.unresolved || 0)}
               </MetaPill>
             ) : null}
@@ -95,9 +112,9 @@ export default function AlignmentSummaryCard({
             ) : null}
           </div>
 
-          <Section title="Where reasoning is aligned" items={sections.aligned} hideTitle />
-          <Section title="Still unresolved" items={sections.unresolved} />
-          <Section title="Diverging priorities" items={sections.diverging} />
+          <Section items={sections.unresolved} onSelectSignal={onSelectSignal} />
+          <Section items={sections.aligned} onSelectSignal={onSelectSignal} />
+          <Section items={sections.diverging} onSelectSignal={onSelectSignal} />
         </div>
       ) : (
         <div className="mt-3 rounded-xl bg-slate-50/90 px-3 py-2 text-[11px] text-slate-500">

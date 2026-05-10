@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { normalizeNodeCategory } from "@/lib/thinkingMachine/nodeMeta";
 
 export function useNodePorts({
   nodes,
@@ -31,6 +32,29 @@ export function useNodePorts({
     });
     return map;
   }, [edges]);
+
+  const linkedCategoriesByNode = useMemo(() => {
+    const nodeCategoryById = new Map(
+      nodes
+        .filter((node) => node?.id && node?.type === "thinkingNode")
+        .map((node) => [node.id, normalizeNodeCategory(node?.data?.category)])
+    );
+    const map = new Map();
+    const addLinkedCategory = (nodeId, linkedNodeId) => {
+      const linkedCategory = nodeCategoryById.get(linkedNodeId);
+      if (!nodeId || !linkedCategory) return;
+      const categories = map.get(nodeId) || [];
+      categories.push(linkedCategory);
+      map.set(nodeId, categories);
+    };
+
+    edges.forEach((edge) => {
+      addLinkedCategory(edge?.source, edge?.target);
+      addLinkedCategory(edge?.target, edge?.source);
+    });
+
+    return map;
+  }, [edges, nodes]);
 
   const displayNodes = useMemo(() => {
     const hasHighlightSet = highlightedNodeIds instanceof Set;
@@ -63,6 +87,7 @@ export function useNodePorts({
         ...(n.type === "thinkingNode"
           ? {
               nodeId: n.id,
+              linkedNodeCategories: linkedCategoriesByNode.get(n.id) || [],
               conflictLinkedNodeTitles: conflictByNodeId?.[n.id]?.linkedNodeTitles || [],
               conflictExplanation: conflictExplainResultByNodeId?.[n.id] || null,
               isConflictPopoverOpen: openConflictNodeId === n.id,
@@ -83,6 +108,7 @@ export function useNodePorts({
     draftHandlers,
     draftSubmittingIds,
     highlightedNodeIds,
+    linkedCategoriesByNode,
     nodes,
     onExplainConflict,
     onToggleConflictPopover,
@@ -92,4 +118,3 @@ export function useNodePorts({
 
   return { displayNodes };
 }
-

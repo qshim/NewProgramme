@@ -1,13 +1,8 @@
 "use client";
 
-function MemberButton({ member, isActive, isCurrentUser, onClick }) {
-  const initials = String(member?.name || "?")
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+import ActorGlyph from "@/components/thinkingMachine/teamContext/ActorGlyph";
 
+function MemberButton({ member, isActive, isCurrentUser, onClick }) {
   return (
     <button
       type="button"
@@ -18,9 +13,7 @@ function MemberButton({ member, isActive, isCurrentUser, onClick }) {
           : "border-slate-200/80 bg-white/92 hover:border-slate-300 hover:bg-slate-50"
       }`}
     >
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white shadow-sm">
-        {initials || "?"}
-      </div>
+      <ActorGlyph actor={member} size="md" />
       <div className="min-w-0 flex-1">
         <div className="line-clamp-1 text-[12px] font-semibold text-slate-800">
           {member?.name || "Unknown teammate"}

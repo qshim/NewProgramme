@@ -20,10 +20,10 @@ export default function TopBarProjectBreadcrumb({
   commitTitle,
 }) {
   return (
-    <div className="pointer-events-auto flex w-[382px] justify-self-start pt-0.5">
+    <div className="pointer-events-auto flex max-w-[calc(100vw-48px)] justify-self-start pt-0.5">
       <motion.div
         layout
-        className="flex w-full max-w-[420px] items-center gap-2 text-[14px] font-medium text-slate-700/88"
+        className="flex max-w-full flex-wrap items-baseline gap-2 text-[14px] font-medium text-slate-700/88"
         style={TOPBAR_CENTER_TEXT_STYLE}
         transition={{ layout: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } }}
       >
@@ -35,7 +35,7 @@ export default function TopBarProjectBreadcrumb({
           {projectMetaLabel}
         </Link>
         <span className="text-slate-400/80">/</span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 max-w-full">
           {isEditingTitle ? (
             <motion.input
               layout="position"
@@ -63,7 +63,7 @@ export default function TopBarProjectBreadcrumb({
               layout="position"
               type="button"
               onClick={() => setIsEditingTitle(true)}
-              className="max-w-full truncate text-left text-[14px] font-medium text-slate-700/88 transition hover:text-slate-900"
+              className="max-w-full break-words text-left text-[14px] font-medium text-slate-700/88 transition hover:text-slate-900"
               style={TOPBAR_CENTER_TEXT_STYLE}
               aria-label="Edit project title"
               title="Rename project"
@@ -77,4 +77,3 @@ export default function TopBarProjectBreadcrumb({
     </div>
   );
 }
-

@@ -6,7 +6,6 @@ import { ArrowUp, GitBranch, Image as ImageIcon, Loader2, Sparkles, StickyNote }
 import {
   getSuggestionTagMeta,
   getTypeMeta,
-  normalizeReasoningStage,
   normalizeNodeData,
   normalizeSuggestionTags,
 } from "@/lib/thinkingMachine/nodeMeta";
@@ -34,22 +33,10 @@ function MicButtonIcon() {
   );
 }
 
-function parseStage(stage) {
-  const value = normalizeReasoningStage(stage);
-  const isDesign = value.startsWith("design-");
-  const isConverge = value.endsWith("-converge");
-  return {
-    mode: isDesign ? "design" : "research",
-    flow: isConverge ? "converge" : "diverge",
-  };
-}
-
 export default function RightAgentDrawer({
   isOpen,
   mode,
-  stage = "research-diverge",
   suggestions,
-  onStageChange,
   activeSuggestion,
   selectedNode,
   linkedNodes,
@@ -74,10 +61,12 @@ export default function RightAgentDrawer({
   onDemoteSelectedNode,
   onSetNodeVisibility,
   onChatContextSelect,
+  onAlignmentSignalSelect,
   modeLabel,
   candidateHint,
   selectedNodeQuickActions,
   uiLanguage = "en",
+  onUiLanguageChange,
   canvasMode = "personal",
   onCanvasModeChange,
   chatButtonRef,
@@ -91,12 +80,12 @@ export default function RightAgentDrawer({
   const isTip = mode === "tip";
   const isChat = mode === "chat";
   const isMeetingCapture = inputMode === "meeting";
-  const { mode: thinkingMode, flow: thinkingFlow } = parseStage(stage);
   const suggestionItems = Array.isArray(suggestions) ? suggestions : [];
   const shouldShowContextPanel = suggestionItems.length > 0;
   const activeMeta = normalizeNodeData(activeSuggestion || {});
   const categoryColors = getTypeMeta(activeMeta.category);
   const activeSuggestionTags = normalizeSuggestionTags(activeSuggestion?.suggestionTags || activeSuggestion?.tags, activeMeta);
+  const shouldShowActiveSuggestionCard = Boolean(activeSuggestion && activeSuggestion?.type !== "attachedNodes");
   const drawerFieldBaseFade =
     "linear-gradient(169.55deg, rgba(199, 251, 201, 0.3) 9.44%, rgba(179, 236, 236, 0.3) 97.4%)";
   const drawerFieldRadialAlpha = "none";
@@ -298,6 +287,32 @@ export default function RightAgentDrawer({
                   Team
                 </button>
                 </div>
+                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-slate-200/80 bg-[#F0F1EF]/86 p-[2px] shadow-[0_5px_14px_rgba(15,23,42,0.06)] backdrop-blur-[14px]">
+                  <button
+                    type="button"
+                    onClick={() => onUiLanguageChange?.("en")}
+                    aria-label="Switch interface language to English"
+                    className={`inline-flex h-6 min-w-[31px] items-center justify-center rounded-[12px] px-2 text-[10px] font-bold transition ${
+                      uiLanguage === "en"
+                        ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUiLanguageChange?.("ko")}
+                    aria-label="Switch interface language to Korean"
+                    className={`inline-flex h-6 min-w-[31px] items-center justify-center rounded-[12px] px-2 text-[10px] font-bold transition ${
+                      uiLanguage === "ko"
+                        ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    KR
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -334,12 +349,16 @@ export default function RightAgentDrawer({
                         onSetVisibility={(nextVisibility) => onSetNodeVisibility?.(selectedNode?.id, nextVisibility)}
                         onClearSelection={onClearSelectedNode}
                       />
-                      <AlignmentSummaryCard selectedNode={selectedNode} summary={alignmentSummary} />
+                      <AlignmentSummaryCard
+                        selectedNode={selectedNode}
+                        summary={alignmentSummary}
+                        onSelectSignal={onAlignmentSignalSelect}
+                      />
                       {isMeetingCapture ? (
                         <DrawerMeetingCaptureSection meetingCaptureSummary={meetingCaptureSummary} />
                       ) : null}
 
-                      {activeSuggestion ? (
+                      {shouldShowActiveSuggestionCard ? (
                         <div
                           className={`rounded-[14px] border ${categoryColors.border} ${categoryColors.tint} px-3`}
                           style={{ paddingTop: 11, paddingBottom: 17 }}
@@ -355,7 +374,7 @@ export default function RightAgentDrawer({
                               ["reasoning", activeSuggestionTags.reasoning],
                               ["lens", activeSuggestionTags.lens],
                               ["question", activeSuggestionTags.question],
-                            ].map(([axis, value]) => {
+                            ].filter(([axis, value]) => !(axis === "lens" && value === "User")).map(([axis, value]) => {
                               const meta = getSuggestionTagMeta(axis, value);
                               return (
                                 <span key={`${axis}-${value}`} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.className}`}>
@@ -482,55 +501,6 @@ export default function RightAgentDrawer({
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div className="mt-2 flex justify-center pb-1 pt-2">
-              <div className="pointer-events-auto inline-flex w-full max-w-[318px] items-center rounded-[16px] border border-white/80 bg-white/74 p-[3px] shadow-[0_8px_18px_rgba(83,108,90,0.09)] backdrop-blur-[14px]">
-                <button
-                  type="button"
-                  onClick={() => onStageChange?.("research-diverge")}
-                  className={`inline-flex h-6 flex-1 items-center justify-center rounded-[12px] px-2 text-[9px] font-semibold transition ${
-                    thinkingMode === "research"
-                      ? "bg-[#EDEDE5] text-[#60656F]"
-                      : "text-[#8A9099]"
-                  }`}
-                >
-                  Research
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onStageChange?.("design-diverge")}
-                  className={`inline-flex h-6 flex-1 items-center justify-center rounded-[12px] px-2 text-[9px] font-semibold transition ${
-                    thinkingMode === "design"
-                      ? "bg-[#F7C8C0] text-[#FFFFFF]"
-                      : "text-[#8A9099]"
-                  }`}
-                >
-                  Design
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onStageChange?.(`${thinkingMode}-diverge`)}
-                  className={`inline-flex h-6 flex-1 items-center justify-center rounded-[12px] px-2 text-[9px] font-semibold transition ${
-                    thinkingFlow === "diverge"
-                      ? "bg-[#7BA592] text-[#FFFFFF]"
-                      : "text-[#8A9099]"
-                  }`}
-                >
-                  Diverge
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onStageChange?.(`${thinkingMode}-converge`)}
-                  className={`inline-flex h-6 flex-1 items-center justify-center rounded-[12px] px-2 text-[9px] font-semibold transition ${
-                    thinkingFlow === "converge"
-                      ? "bg-[#B8C6B5] text-[#FFFFFF]"
-                      : "text-[#8A9099]"
-                  }`}
-                >
-                  Converge
-                </button>
               </div>
             </div>
           </div>

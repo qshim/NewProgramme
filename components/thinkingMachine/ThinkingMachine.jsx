@@ -12,6 +12,7 @@ import LeftTeamContextPanel from "./LeftTeamContextPanel";
 import RightAgentDrawer from "./RightAgentDrawer";
 import TopBar from "./TopBar";
 import { getNodeSnapshot, getRelatedNodeIds } from "@/components/thinkingMachine/utils/graphSnapshots";
+import { buildAttachedNodesContext } from "@/components/thinkingMachine/utils/chatDropGeometry";
 import { decorateConnectorEdges, toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
 import { computeNodeBounds, relayoutTopLevelThinkingNodes, shiftClusterRightOfExisting } from "@/lib/thinkingMachine/graphMerge";
@@ -50,9 +51,19 @@ const INITIAL_NODES = [];
 const INITIAL_EDGES = [];
 const ADMIN_MODE_STORAGE_KEY = "vtm-admin-mode-enabled";
 const ADMIN_HINT_DISMISSED_KEY = "vtm-admin-shortcut-hint-dismissed";
+const UI_LANGUAGE_STORAGE_KEY = "thinkingMachineUiLanguage";
 const MOCK_CURRENT_USER_ID = "mock-user-1";
 const MOCK_CURRENT_USER_ROLE = "owner";
 const AUTO_FIT_MAX_ZOOM = 1;
+
+function readInitialUiLanguage() {
+    if (typeof window === "undefined") return "en";
+    try {
+        return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) === "ko" ? "ko" : "en";
+    } catch {
+        return "en";
+    }
+}
 
 function cubicOut(t) {
     return 1 - Math.pow(1 - t, 3);
@@ -73,6 +84,7 @@ export default function ThinkingMachine({
     const [stage, setStage] = useState("research-diverge");
     const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
     const [canvasMode, setCanvasMode] = useState("personal");
+    const [uiLanguage, setUiLanguage] = useState(readInitialUiLanguage);
     const [inputMode, setInputMode] = useState("workspace");
     const [isCanvasInteractive, setIsCanvasInteractive] = useState(true);
     const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -112,6 +124,15 @@ export default function ThinkingMachine({
     const currentUserRole = currentUser?.role || MOCK_CURRENT_USER_ROLE;
     const currentUserEmail = currentUser?.email || "";
     const currentUserPicture = currentUser?.picture || "";
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage);
+        } catch {
+            // Language preference should not block the workspace.
+        }
+    }, [uiLanguage]);
 
     // AI 제안 패널
     const [suggestions, setSuggestions] = useState([]);
@@ -769,6 +790,33 @@ export default function ThinkingMachine({
             }
         }
     }, [animateViewportToNodes, nodes]);
+
+    const handleAlignmentSignalSelect = useCallback((item) => {
+        const ids = Array.from(new Set((Array.isArray(item?.nodeIds) ? item.nodeIds : []).filter(Boolean)));
+        const relatedNodes = nodes.filter((node) => ids.includes(node.id) && node?.type === "thinkingNode");
+        if (!relatedNodes.length) return;
+
+        const context = buildAttachedNodesContext(relatedNodes);
+        const signalLabel = item?.label || "Reasoning signal";
+        const signalSummary = item?.summary || "";
+
+        setCanvasMode("team");
+        setHighlightedNodeIds(new Set(ids));
+        animateViewportToNodes(relatedNodes);
+        setSelectedNodeId(relatedNodes[0]?.id || null);
+        setActiveSuggestion({
+            ...context,
+            id: `alignment-${item?.id || context.id}`,
+            title: signalLabel,
+            content: signalSummary || context.content,
+            category: "Insight",
+            initialUserMessage: `Help me resolve this reasoning alignment signal: "${signalSummary || signalLabel}". Suggest the smallest next comment, evidence, or clarification that would move it forward.`,
+        });
+        setDrawerMode("chat");
+        setIsDrawerOpen(true);
+        setHasStartedInput(true);
+    }, [animateViewportToNodes, nodes, setActiveSuggestion]);
+
     const {
         filteredTeamActivity,
         handleSelectTeamMember,
@@ -1058,10 +1106,12 @@ export default function ThinkingMachine({
                             onDemoteSelectedNode={handleDemoteSelectedNode}
                             onSetNodeVisibility={handleSetNodeVisibility}
                             onChatContextSelect={handleDrawerSuggestionSelect}
+                            onAlignmentSignalSelect={handleAlignmentSignalSelect}
                             modeLabel={reasoningModeProfile.label}
                             candidateHint={reasoningModeProfile.candidateHint}
                             selectedNodeQuickActions={reasoningModeProfile.selectedNodeActions}
-                            uiLanguage="en"
+                            uiLanguage={uiLanguage}
+                            onUiLanguageChange={setUiLanguage}
                             canvasMode={canvasMode}
                             onCanvasModeChange={setCanvasMode}
                             chatButtonRef={chatButtonRef}

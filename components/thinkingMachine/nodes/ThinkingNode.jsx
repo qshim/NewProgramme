@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Handle, Position } from "reactflow";
-import { getTypeMeta, normalizeNodeCategory, getSourceTypeMeta } from "@/lib/thinkingMachine/nodeMeta";
+import { getActionStateMeta } from "@/lib/thinkingMachine/nodeMeta";
 import ConflictPopover from "@/components/thinkingMachine/conflicts/ConflictPopover";
 
 const HANDLE_STYLE = {
@@ -13,34 +14,6 @@ const HANDLE_STYLE = {
   opacity: 0,
   pointerEvents: "none",
 };
-
-function getPortColor(category) {
-  return getTypeMeta(normalizeNodeCategory(category)).color;
-}
-
-const FIVE_WH_LABELS = {
-  Problem: "Why",
-  Goal: "Why",
-  Insight: "Why",
-  Evidence: "When",
-  Assumption: "Why",
-  Constraint: "Where",
-  Idea: "What",
-  Option: "How",
-  Risk: "What",
-  Conflict: "Why",
-  Decision: "How",
-  OpenQuestion: "Why",
-};
-
-const LEGACY_5WH = new Set(["Who", "What", "When", "Where", "Why", "How"]);
-
-function getFiveWhLabelFromData(data = {}) {
-  const legacy = data.legacyCategory;
-  if (typeof legacy === "string" && LEGACY_5WH.has(legacy)) return legacy;
-  const normalized = normalizeNodeCategory(data.category);
-  return FIVE_WH_LABELS[normalized] || "How";
-}
 
 function MetaChip({ label, iconSrc, iconSize = 10, className, style }) {
   if (!label) return null;
@@ -63,7 +36,7 @@ function MetaChip({ label, iconSrc, iconSize = 10, className, style }) {
   );
 }
 
-function AnchorPort({ side, color }) {
+function AnchorPort({ side }) {
   const sideClass = side === "left" ? "left-[-5px]" : "right-[-5px]";
 
   return (
@@ -72,28 +45,41 @@ function AnchorPort({ side, color }) {
       aria-hidden
     >
       <span
-        className="absolute h-[8px] w-[8px] rounded-full opacity-30"
-        style={{ backgroundColor: color }}
+        className="absolute h-[8px] w-[8px] rounded-full bg-slate-200/70"
       />
       <span
-        className="relative h-[3px] w-[3px] rounded-full"
-        style={{ backgroundColor: color, boxShadow: `0 0 0 1px ${color}22` }}
+        className="relative h-[3px] w-[3px] rounded-full bg-slate-400/70 shadow-[0_0_0_1px_rgba(148,163,184,0.18)]"
       />
     </span>
   );
 }
 
 export default function ThinkingNode({ data = {} }) {
-  const portColor = getPortColor(data.category);
   const hasLeftPort = Boolean(data.hasLeftPort);
   const hasRightPort = Boolean(data.hasRightPort);
 
-  const sourceMeta = getSourceTypeMeta(data.sourceType);
-  const fiveWhLabel = getFiveWhLabelFromData(data);
-  const phaseLabel = data.phase === "Solution" ? "Solution" : "Problem";
+  const actionStateMeta = getActionStateMeta(data);
+  const isReadyToShare = actionStateMeta.state === "ready_to_share";
+  const actionStateKey = [
+    actionStateMeta.state,
+    data.visibility,
+    Array.isArray(data.linkedNodeCategories) ? data.linkedNodeCategories.join("|") : "",
+  ].join(":");
+  const [dismissedReadyStateKey, setDismissedReadyStateKey] = useState("");
+  const isActionStateVisible = !isReadyToShare || dismissedReadyStateKey !== actionStateKey;
+
+  useEffect(() => {
+    if (!isReadyToShare) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      setDismissedReadyStateKey(actionStateKey);
+    }, 2400);
+
+    return () => window.clearTimeout(timeout);
+  }, [actionStateKey, isReadyToShare]);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full cursor-grab active:cursor-grabbing">
       <ConflictPopover
         nodeId={data.nodeId}
         state={data.conflictState}
@@ -123,22 +109,17 @@ export default function ThinkingNode({ data = {} }) {
             >
               {data.content}
             </div>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <MetaChip label={sourceMeta.label} iconSrc="/profile.png" iconSize={9} className="bg-[#DBF4CD] text-[#5F6652]" />
-              <MetaChip label={fiveWhLabel} iconSrc="/why.png" className="bg-[#C3EEE7] text-[#5F6652]" />
-              <MetaChip
-                label={phaseLabel}
-                iconSrc={phaseLabel === "Solution" ? "/bulb.png" : "/problem.png"}
-                className="bg-[#CADBFF] text-[#5F6652]"
-                style={{ paddingLeft: 7 }}
-              />
-            </div>
+            {isActionStateVisible ? (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <MetaChip label={actionStateMeta.label} className={actionStateMeta.className} />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {hasLeftPort ? <AnchorPort side="left" color={portColor} /> : null}
-      {hasRightPort ? <AnchorPort side="right" color={portColor} /> : null}
+      {hasLeftPort ? <AnchorPort side="left" /> : null}
+      {hasRightPort ? <AnchorPort side="right" /> : null}
       <Handle
         id="right-source"
         type="source"
@@ -156,4 +137,3 @@ export default function ThinkingNode({ data = {} }) {
     </div>
   );
 }
-

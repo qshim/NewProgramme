@@ -1,3 +1,5 @@
+import ActorGlyph from "@/components/thinkingMachine/teamContext/ActorGlyph";
+
 function formatTimestamp(value) {
   if (!value) return "Just now";
   const date = new Date(value);
@@ -33,8 +35,7 @@ export default function TeamTimelineCard({
     <div className="rounded-2xl border border-white/70 bg-white/82 p-3.5 shadow-[0_16px_28px_rgba(15,23,42,0.10)] backdrop-blur-[14px]">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Timeline</div>
-          <div className="mt-1 text-[11px] text-slate-500">Recent team changes that may shift the reasoning context.</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Activity</div>
         </div>
         <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
           {safeItems.length}
@@ -60,22 +61,15 @@ export default function TeamTimelineCard({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                          {formatTypeLabel(item.type)}
-                        </div>
-                        <div className="mt-1 line-clamp-1 text-[12px] font-semibold text-slate-800">
+                        <div className="mt-1 line-clamp-1 text-[11px] font-semibold leading-tight text-slate-800">
+                          <span className="text-slate-500">({item.nodeType || formatTypeLabel(item.type)}) </span>
                           {item.nodeTitle || item.after?.title || "Untitled node"}
                         </div>
                       </div>
-                      <div className="shrink-0 text-[10px] text-slate-400">{formatTimestamp(item.timestamp)}</div>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] text-slate-500">{item.userName || item.userId || "Unknown teammate"}</span>
-                      {item.nodeType ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                          {item.nodeType}
-                        </span>
-                      ) : null}
+                      <div className="flex shrink-0 items-center gap-1.5 text-[10px] text-slate-400">
+                        <ActorGlyph actor={item} size="xs" />
+                        <span>{formatTimestamp(item.timestamp)}</span>
+                      </div>
                     </div>
                     {item.after?.content ? (
                       <div className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-slate-500">

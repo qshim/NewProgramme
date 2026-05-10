@@ -88,6 +88,7 @@ export default function NodeMap({
                 edgeTypes={edgeTypes}
                 connectionMode={ConnectionMode.Loose}
                 fitView
+                proOptions={{ hideAttribution: true }}
                 className="reactflow-canvas-pan tm-canvas-flow z-10"
                 minZoom={0.2}
                 maxZoom={1}

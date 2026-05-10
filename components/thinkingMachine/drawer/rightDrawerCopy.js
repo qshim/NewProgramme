@@ -5,13 +5,13 @@ export function getRightDrawerCopy(uiLanguage = "en") {
       emptySuggestions: "제안 카드를 선택해 에이전트와 reasoning 흐름을 확장하세요.",
       emptyWorkspace: "노드 컨텍스트를 첨부해 워크스페이스 대화를 시작하세요.",
       emptySuggestionState: "제안을 선택해 구조를 검토하거나 확장하세요.",
-      meetingTab: "회의",
-      workspaceInputTab: "워크스페이스",
+      meetingTab: "Meeting",
+      workspaceInputTab: "Workspace",
       suggestionsTab: "Suggestions",
       workspaceTab: "Workspace",
-      note: "노트",
-      image: "이미지",
-      voice: "음성",
+      note: "Note",
+      image: "Image",
+      voice: "Voice",
     };
   }
 

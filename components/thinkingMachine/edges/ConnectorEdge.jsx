@@ -1,7 +1,6 @@
 "use client";
 
 import { BaseEdge } from "reactflow";
-import { getTypeMeta } from "@/lib/thinkingMachine/nodeMeta";
 import { getAlignmentVisualMeta } from "@/lib/thinkingMachine/reasoningAlignment";
 
 const DEFAULT_LINE_COLOR = "#AAF17B";
@@ -244,41 +243,6 @@ function buildOrthogonalPoints(sourceX, sourceY, targetX, targetY, clearance, la
   return best;
 }
 
-function getLabelAnchor(points, sourceX, sourceY, targetX, targetY) {
-  const fallback = {
-    x: (sourceX + targetX) / 2,
-    y: (sourceY + targetY) / 2 - 18,
-  };
-  const pts = Array.isArray(points) ? points : [];
-  if (pts.length < 2) return fallback;
-
-  let longestHorizontal = null;
-  for (let i = 1; i < pts.length; i += 1) {
-    const prev = pts[i - 1];
-    const curr = pts[i];
-    const dy = curr.y - prev.y;
-    const dx = curr.x - prev.x;
-    if (dy !== 0) continue;
-    const width = Math.abs(dx);
-    if (!longestHorizontal || width > longestHorizontal.width) {
-      longestHorizontal = {
-        width,
-        x: (prev.x + curr.x) / 2,
-        y: curr.y,
-      };
-    }
-  }
-
-  if (longestHorizontal) {
-    return {
-      x: longestHorizontal.x,
-      y: longestHorizontal.y - 18,
-    };
-  }
-
-  return fallback;
-}
-
 export default function ConnectorEdge({
   id,
   sourceX,
@@ -307,17 +271,13 @@ export default function ConnectorEdge({
   const path = buildOrganicBezierPath(points, curveTension);
   const startPoint = points[0] ?? { x: sx, y: sy };
   const endPoint = points[points.length - 1] ?? { x: tx, y: ty };
-  const label = typeof data?.label === "string" ? data.label.replace(/_/g, " ") : "";
   const alignmentLabel = typeof data?.alignmentLabel === "string" ? data.alignmentLabel : alignmentMeta.label;
-  const labelAnchor = getLabelAnchor(points, sx, sy, tx, ty);
-  const labelX = Math.round(labelAnchor.x);
-  const labelY = Math.round(labelAnchor.y);
-  const sourceTypeMeta = getTypeMeta(data?.sourceCategory);
+  const labelX = Math.round(startPoint.x + 8);
+  const labelY = Math.round(startPoint.y);
   const isSelected = Boolean(selected);
   const underlayStroke = isSelected ? "rgba(255, 255, 255, 0.24)" : "rgba(255, 255, 255, 0.12)";
   const primaryStroke = isSelected ? "rgba(255, 255, 255, 0.92)" : lineColor;
   const primaryWidth = isSelected ? lineWidth + 0.2 : lineWidth;
-  const endpointRadius = isSelected ? 2.1 : 1.8;
 
   return (
     <g className={`tm-connector-edge ${isSelected ? "is-selected" : ""}`}>
@@ -348,53 +308,29 @@ export default function ConnectorEdge({
           strokeDasharray: lineDash,
         }}
       />
-      <circle
-        cx={startPoint.x}
-        cy={startPoint.y}
-        r={endpointRadius}
-        fill={primaryStroke}
-        stroke={isSelected ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.68)"}
-        strokeWidth="0.85"
-      />
-      <circle
-        cx={endPoint.x}
-        cy={endPoint.y}
-        r={endpointRadius}
-        fill={primaryStroke}
-        stroke={isSelected ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.68)"}
-        strokeWidth="0.85"
-      />
-      {label || alignmentLabel ? (
+      {alignmentLabel ? (
         <foreignObject
-          width={112}
-          height={label && alignmentLabel ? 42 : 24}
-          x={labelX - 56}
-          y={labelY - (label && alignmentLabel ? 18 : 12)}
+          width={150}
+          height={24}
+          x={labelX}
+          y={labelY - 12}
+          className="pointer-events-none select-none"
           requiredExtensions="http://www.w3.org/1999/xhtml"
         >
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1">
-            {label ? (
-              <span
-                className="rounded-full border border-white/40 px-2 py-1 text-[9px] font-semibold capitalize tracking-[-0.01em] text-slate-700 shadow-sm backdrop-blur-sm"
-                style={{
-                  backgroundColor: `${sourceTypeMeta.color}${isSelected ? "D9" : "B3"}`,
-                  opacity: isSelected ? 0.98 : 0.92,
-                }}
-              >
-                {label}
-              </span>
-            ) : null}
-            {alignmentLabel ? (
-              <span
-                className="rounded-full border border-white/60 px-2 py-0.5 text-[8px] font-semibold tracking-[-0.01em] text-slate-600 shadow-sm backdrop-blur-sm"
-                style={{
-                  backgroundColor: data?.alignmentLabelBackground || alignmentMeta.labelBackground,
-                  opacity: isSelected ? 0.98 : 0.94,
-                }}
-              >
-                {alignmentLabel}
-              </span>
-            ) : null}
+          <div className="flex h-full w-full select-none items-center justify-start">
+            <span
+              className="select-none whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-semibold tracking-[-0.01em] shadow-sm backdrop-blur-sm"
+              style={{
+                backgroundColor: alignmentMeta.labelBackground,
+                borderColor: alignmentMeta.labelBorder,
+                color: alignmentMeta.labelText,
+                opacity: isSelected ? 0.98 : 0.94,
+                WebkitUserSelect: "none",
+                userSelect: "none",
+              }}
+            >
+              {alignmentLabel}
+            </span>
           </div>
         </foreignObject>
       ) : null}

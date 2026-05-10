@@ -60,6 +60,9 @@ export function useDrawerChat({
       try {
         const isAttachedNodesContext = targetSuggestion?.type === "attachedNodes";
         const attached = isAttachedNodesContext ? targetSuggestion?.attached_nodes ?? [] : [];
+        const defaultUserMessage = isAttachedNodesContext
+          ? "Analyze the attached nodes, summarize what they collectively imply, and ask me one clarifying question to move forward."
+          : "Please explain this suggestion first.";
         const payload = {
           suggestion_title: targetSuggestion.title,
           suggestion_content: targetSuggestion.content,
@@ -67,9 +70,7 @@ export function useDrawerChat({
           suggestion_phase: targetSuggestion.phase,
           messages: [],
           attached_nodes: attached,
-          user_message: isAttachedNodesContext
-            ? "Analyze the attached nodes, summarize what they collectively imply, and ask me one clarifying question to move forward."
-            : "Please explain this suggestion first.",
+          user_message: targetSuggestion.initialUserMessage || defaultUserMessage,
           stage,
         };
         const res = await chat(payload);
