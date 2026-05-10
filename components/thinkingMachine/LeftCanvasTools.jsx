@@ -1,12 +1,10 @@
 "use client";
 
-import { Image as ImageIcon, Lock, ScanSearch, StickyNote, Unlock, ZoomIn, ZoomOut } from "lucide-react";
+import { Lock, ScanSearch, Unlock, ZoomIn, ZoomOut } from "lucide-react";
 
 const COPY = {
   en: {
     label: "Canvas tools",
-    note: "Note",
-    image: "Image",
     view: "View",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
@@ -16,8 +14,6 @@ const COPY = {
   },
   ko: {
     label: "캔버스 도구",
-    note: "노트",
-    image: "이미지",
     view: "뷰",
     zoomIn: "확대",
     zoomOut: "축소",
@@ -46,8 +42,6 @@ function IconButton({ onClick, label, children, active = false }) {
 }
 
 export default function LeftCanvasTools({
-  onAddPostit,
-  onAddImage,
   onZoomIn,
   onZoomOut,
   onFitView,
@@ -64,28 +58,6 @@ export default function LeftCanvasTools({
           {copy.label}
         </div>
         <div className="flex flex-col gap-3 rounded-[18px] bg-slate-50/90 px-2 py-2.5">
-          <div>
-            <div className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-              Create
-            </div>
-            <div className="flex gap-2">
-              <div className="flex flex-col items-center gap-1">
-                <IconButton onClick={onAddPostit} label={copy.note} active>
-                  <StickyNote className="h-4.5 w-4.5 opacity-90 transition-opacity group-hover:opacity-100" />
-                </IconButton>
-                <div className="text-center text-[10px] font-medium text-slate-600">{copy.note}</div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <IconButton onClick={onAddImage} label={copy.image}>
-                  <ImageIcon className="h-4.5 w-4.5 opacity-90 transition-opacity group-hover:opacity-100" />
-                </IconButton>
-                <div className="text-center text-[10px] font-medium text-slate-600">{copy.image}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-px bg-slate-200/80" />
-
           <div>
             <div className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               {copy.view}

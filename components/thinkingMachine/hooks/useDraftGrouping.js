@@ -12,19 +12,7 @@ import {
   layoutDraftsInGroupGrid,
   layoutThinkingNodesInGroup,
 } from "@/lib/thinkingMachine/draftLayout";
-
-function mergeSuggestionUnique(prev, nextSuggestion) {
-  if (!nextSuggestion) return prev;
-  const key = `${String(nextSuggestion.category || "").toLowerCase()}::${String(nextSuggestion.title || "").trim().toLowerCase()}::${String(nextSuggestion.content || "").trim().toLowerCase()}`;
-  const existingIndex = prev.findIndex((item) => {
-    const existingKey = `${String(item?.category || "").toLowerCase()}::${String(item?.title || "").trim().toLowerCase()}::${String(item?.content || "").trim().toLowerCase()}`;
-    return existingKey === key;
-  });
-  if (existingIndex === -1) return [nextSuggestion, ...prev];
-  const clone = [...prev];
-  clone.splice(existingIndex, 1);
-  return [nextSuggestion, ...clone];
-}
+import { mergeSuggestionUnique } from "@/components/thinkingMachine/utils/suggestionUtils";
 
 export function useDraftGrouping({
   nodes,
@@ -36,6 +24,8 @@ export function useDraftGrouping({
   setSuggestions,
   reactFlowRef,
   stage = "research-diverge",
+  currentUserId = "mock-user-1",
+  currentUserName = "You",
 } = {}) {
   const [selectedDraftIds, setSelectedDraftIds] = useState([]);
   const [showDraftConvertPrompt, setShowDraftConvertPrompt] = useState(false);
@@ -260,7 +250,21 @@ export function useDraftGrouping({
         const data = await analyze(payload);
 
         const suggestionNodeData = data.nodes.find((n) => n.data.is_ai_generated);
-        const userNodeDatas = data.nodes.filter((n) => !n.data.is_ai_generated);
+        // Draft 에서 생성되는 사용자 노드는 항상
+        // - ownerId: 현재 사용자
+        // - editedBy: "You"
+        // - visibility: "private" (Personal 레이어에서 바로 보이도록)
+        const userNodeDatas = data.nodes
+          .filter((n) => !n.data.is_ai_generated)
+          .map((n) => ({
+            ...n,
+            data: {
+              ...n.data,
+              ownerId: currentUserId,
+              editedBy: currentUserName,
+              visibility: "private",
+            },
+          }));
         const rawEdges = data.edges.filter((e) => !e.id.startsWith("e-suggest-"));
 
         const bounds = computeNodeBounds(draftNodes) || { minX: 0, minY: 0, maxX: 520, maxY: 420 };
@@ -279,7 +283,11 @@ export function useDraftGrouping({
         const thinkingAreaH = seedMaxY + 40;
 
         const groupW = Math.max(DRAFT_AREA_W, thinkingAreaW, 520);
-        const groupH = Math.max(DRAFT_AREA_H, thinkingAreaH, 360);
+        // Height는 원래 드래프트 위치(DRAFT_AREA_H)에 끌려 지나치게 커지는 문제가 있어
+        // 실제 생성된 사고 노드(thinkingAreaH)를 기준으로 적당한 여유만 두고 계산한다.
+        const GROUP_MIN_H = 360;
+        const GROUP_EXTRA_MARGIN_H = 72;
+        const groupH = Math.max(thinkingAreaH + GROUP_EXTRA_MARGIN_H, GROUP_MIN_H);
 
         const groupNode = {
           id: groupId,
@@ -373,6 +381,7 @@ export function useDraftGrouping({
             sourceType: suggestionNodeData.data.sourceType,
             visibility: suggestionNodeData.data.visibility,
             confidence: suggestionNodeData.data.confidence,
+            suggestionTags: suggestionNodeData.data.suggestionTags || null,
             relatedNodeId: null,
           };
           setSuggestions?.((prev) => mergeSuggestionUnique(prev, newSuggestion));
@@ -392,7 +401,7 @@ export function useDraftGrouping({
         });
       }
     },
-    [edges, isAnalyzing, nodes, setEdges, setIsAnalyzing, setNodes, setSuggestions, stage, toggleIdeaGroupMode]
+    [currentUserId, currentUserName, edges, isAnalyzing, nodes, setEdges, setIsAnalyzing, setNodes, setSuggestions, stage, toggleIdeaGroupMode]
   );
 
   // Keep a ref to the latest converter so draft nodes never call stale closures.
@@ -419,5 +428,6 @@ export function useDraftGrouping({
     handleDraftSubmit,
     handleSelectionChange,
     convertDraftsToGroup,
+    toggleIdeaGroupMode,
   };
 }

@@ -7,7 +7,7 @@
   --font-family-ui: "Instrument Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-family-heading: "Inter", "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-family-node-body: "Instrument Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --canvas-bg-base: #a6ffd3;
+  --canvas-bg-base: #f2f7f7;
   --canvas-stage-research-diverge: #4dd6f8;
   --canvas-stage-research-converge: #ffff86;
   --canvas-stage-ideation-diverge: #ff969f;
@@ -36,6 +36,7 @@ body {
   height: 100vh;
   overflow: hidden;
 }
+
 
 h1,
 h2,
@@ -68,16 +69,28 @@ h6,
 .tm-canvas-bg::before {
   content: "";
   position: absolute;
-  inset: 0;
+  left: -8px;
+  top: -34px;
+  width: calc(100% + 16px);
+  height: calc(100% + 68px);
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(
-    ellipse var(--canvas-gradient-radius-x) var(--canvas-gradient-radius-y) at var(--canvas-gradient-center-x)
-      var(--canvas-gradient-center-y),
-    rgba(var(--canvas-stage-rgb), 0.68) 0%,
-    rgba(var(--canvas-stage-rgb), 0.44) 36%,
-    rgba(var(--canvas-stage-rgb), 0) 78%
-  );
+  background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.88) 0,
+      rgba(255, 255, 255, 0.88) 1px,
+      transparent 1px,
+      transparent 14px
+    ),
+    repeating-linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.88) 0,
+      rgba(255, 255, 255, 0.88) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+  background-position: 0 0, 16px 15px;
+  opacity: 0.7;
 }
 
 .tm-canvas-bg[data-stage="research-diverge"] {
@@ -103,7 +116,8 @@ h6,
 }
 
 .tm-canvas-flow .react-flow__node {
-  transition: transform 3000ms ease-in, filter 220ms ease, opacity 220ms ease;
+  /* transform은 React Flow가 드래그/뷰포트 이동마다 갱신 — transition을 주면 선만 즉시 따라가고 노드가 늦게 따라옴 */
+  transition: filter 220ms ease, opacity 220ms ease;
 }
 
 .tm-canvas-flow .react-flow__node.tm-node-shell,
@@ -176,3 +190,57 @@ h6,
   z-index: 32;
   filter: saturate(1.05) brightness(1.02);
 }
+
+@keyframes composerGradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes drawerGradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 180% 50%;
+  }
+}
+
+.composer-loading-gradient-text {
+  background-image: linear-gradient(142.46deg, #7FD1DB 13.82%, #788DBC 66.77%, #586789 119.72%);
+  background-size: 200% 100%;
+  animation: composerGradientFlow 2.2s linear infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.drawer-loading-gradient-text {
+  background-image: linear-gradient(
+    90deg,
+    #386644 0%,
+    #46773f 12%,
+    #5ea841 26%,
+    #6de422 40%,
+    #97ed58 54%,
+    #d6d07a 72%,
+    #ffa397 86%,
+    #8fb853 94%,
+    #386644 100%
+  );
+  background-size: 220% 100%;
+  animation: drawerGradientFlow 4.2s ease-in-out infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+

@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  buildAttachedNodesContext,
+  getPointerClientPoint,
+  isPointInRect,
+  isPointInRightRegion,
+  isPointNearRect,
+} from "@/components/thinkingMachine/utils/chatDropGeometry";
 
 export function useGhostDragToChat({
   nodes,
@@ -17,63 +24,15 @@ export function useGhostDragToChat({
   const didAutoOpenOnDragRef = useRef(false);
   const dragOriginRef = useRef(null); // { ids: string[], positions: Map<id, {x,y}> }
   const isNodeDraggingRef = useRef(false);
-  const restoreRafRef = useRef(null);
   const dragStartPointRef = useRef(null); // {x,y}
   const didShowGhostRef = useRef(false);
   const ghostCaptureRef = useRef(false);
-
-  const makeAttachedContextId = (ids) => {
-    const base = Array.isArray(ids) ? ids.join(",") : "";
-    return `attached-${Date.now()}-${base.length}-${Math.random().toString(16).slice(2, 6)}`;
-  };
-
-  const buildAttachedNodesContext = (selected) => {
-    const safeSelected = Array.isArray(selected) ? selected : [];
-    const items = safeSelected
-      .map((n) => ({
-        id: n?.id,
-        title: n?.data?.title,
-        content: n?.data?.content,
-        category: n?.data?.category,
-        phase: n?.data?.phase,
-        sourceType: n?.data?.sourceType,
-        visibility: n?.data?.visibility,
-        confidence: n?.data?.confidence,
-      }))
-      .filter((n) => typeof n.id === "string" && n.id && typeof n.title === "string" && n.title.trim().length > 0);
-
-    return {
-      id: makeAttachedContextId(items.map((i) => i.id)),
-      type: "attachedNodes",
-      title: items.length === 1 ? "Attached node" : `Attached nodes (${items.length})`,
-      content: "Use these nodes as the primary context for this chat.",
-      category: "Insight",
-      phase: "Problem",
-      sourceType: "mixed",
-      visibility: "shared",
-      confidence: "medium",
-      attached_nodes: items,
-    };
-  };
-
-  const getPointerClientPoint = (event) => {
-    const e = event?.nativeEvent ?? event;
-    const touch = e?.touches?.[0] || e?.changedTouches?.[0];
-    if (touch) return { x: touch.clientX, y: touch.clientY };
-    if (typeof e?.clientX === "number" && typeof e?.clientY === "number") return { x: e.clientX, y: e.clientY };
-    return null;
-  };
 
   const isPointNearChatButton = (pt) => {
     const el = chatButtonRef.current;
     if (!pt || !el?.getBoundingClientRect) return false;
     const rect = el.getBoundingClientRect();
-    const pad = 28;
-    const left = rect.left - pad;
-    const right = rect.right + pad;
-    const top = rect.top - pad;
-    const bottom = rect.bottom + pad;
-    return pt.x >= left && pt.x <= right && pt.y >= top && pt.y <= bottom;
+    return isPointNearRect(pt, rect, 28);
   };
 
   const getChatDropZoneRect = () => {
@@ -82,17 +41,10 @@ export function useGhostDragToChat({
     return el.getBoundingClientRect();
   };
 
-  const isPointInRect = (pt, rect, pad = 0) => {
-    if (!pt || !rect) return false;
-    return pt.x >= rect.left - pad && pt.x <= rect.right + pad && pt.y >= rect.top - pad && pt.y <= rect.bottom + pad;
-  };
-
   const isPointInChatRegion = (pt) => {
-    if (!pt) return false;
     const width = typeof window !== "undefined" ? window.innerWidth : 0;
-    if (!width) return false;
     // 오른쪽 영역 진입만으로도 Chat 모드가 자연스럽게 열리도록 넓게 잡음
-    return pt.x >= width - 240;
+    return isPointInRightRegion(pt, width, 240);
   };
 
   const isPointInChatAttachZone = (pt) => {
@@ -103,6 +55,14 @@ export function useGhostDragToChat({
     if (rect && isPointInRect(pt, rect, 24)) return true;
     // Drawer가 닫혀 있거나 rect 측정이 어려운 상황에선 화면 오른쪽 영역으로 폴백
     return isPointInChatRegion(pt);
+  };
+
+  /** 고스트 캡처(노드 고정 + position change 차단)는 채팅 UI 근처에서만 — 오른쪽 넓은 gutter만으로는 켜지 않음 */
+  const isPointInStrictGhostCaptureZone = (pt) => {
+    if (!pt) return false;
+    if (isPointNearChatButton(pt)) return true;
+    const rect = getChatDropZoneRect();
+    return Boolean(rect && isPointInRect(pt, rect, 24));
   };
 
   const isPointInChatDropZone = (pt) => {
@@ -120,16 +80,9 @@ export function useGhostDragToChat({
     return { x: Math.max(0, width - 180), y: Math.max(0, height * 0.35) };
   };
 
+  // position 변경을 막지 않음 — 노드·엣지가 함께 부드럽게 따라가도록 React Flow 상태를 그대로 반영
   const filteredOnNodesChange = useMemo(() => {
     return (changes) => {
-      // 고스트 드래그 UX: 원본 노드는 드래그 중 위치가 바뀌지 않도록 position changes 무시
-      // (ReactFlow 내부 드래그 종료 타이밍 이슈로 onNodeDragStop 이후에도 position change가 들어올 수 있어
-      //  ghostCapture가 켜져있는 동안은 무조건 position을 차단한다.)
-      if (ghostCaptureRef.current && Array.isArray(changes)) {
-        const next = changes.filter((c) => c?.type !== "position");
-        baseOnNodesChange?.(next);
-        return;
-      }
       baseOnNodesChange?.(changes);
     };
   }, [baseOnNodesChange]);
@@ -148,8 +101,9 @@ export function useGhostDragToChat({
 
         const origin = dragOriginRef.current;
         const count = origin?.ids?.length || 1;
-        // 고스트 드래그는 \"오른쪽(Chat) 첨부\" 제스처로 진입했을 때만 활성화
-        if (!ghostCaptureRef.current && movedEnough && nearAttach) {
+        const inGhostZone = isPointInStrictGhostCaptureZone(pt);
+        // 고스트 드래그는 채팅 버튼/드롭존 위에서만 캡처 (화면 오른쪽 넓은 영역만으로는 캡처하지 않음)
+        if (!ghostCaptureRef.current && movedEnough && inGhostZone) {
           ghostCaptureRef.current = true;
         }
 
@@ -160,24 +114,6 @@ export function useGhostDragToChat({
             return { x: pt.x, y: pt.y, count, phase: "dragging" };
           });
         }
-      }
-
-      // 원본 노드 위치 유지: 드래그 중에는 저장된 원점으로 계속 복원 (RAF로 부하 제한)
-      const origin = dragOriginRef.current;
-      if (ghostCaptureRef.current && origin?.positions && origin?.ids?.length && !restoreRafRef.current) {
-        restoreRafRef.current = requestAnimationFrame(() => {
-          restoreRafRef.current = null;
-          const idSet = new Set(origin.ids);
-          setNodes?.((prev) =>
-            prev.map((n) => {
-              if (!idSet.has(n.id)) return n;
-              const pos = origin.positions.get(n.id);
-              if (!pos) return n;
-              if (n.position?.x === pos.x && n.position?.y === pos.y) return n;
-              return { ...n, position: { x: pos.x, y: pos.y } };
-            })
-          );
-        });
       }
 
       if (nearAttach && !didAutoOpenOnDragRef.current) {
@@ -211,7 +147,6 @@ export function useGhostDragToChat({
   );
 
   const handleNodeDragStop = (event, node) => {
-      const wasCaptured = ghostCaptureRef.current;
       const pt = getPointerClientPoint(event);
       const shouldAttach = isPointInChatDropZone(pt);
       setIsChatDropActive(false);
@@ -219,9 +154,32 @@ export function useGhostDragToChat({
       isNodeDraggingRef.current = false;
       dragStartPointRef.current = null;
 
-      // 원본 노드 위치는 항상 원점으로 복원 (마지막 position change 방지)
+      // 드롭존 밖에서 놓으면: 사용자가 드래그한 최종 위치 유지 (고스트만 정리)
+      if (!shouldAttach) {
+        setGhostDrag(null);
+        window.setTimeout(() => {
+          ghostCaptureRef.current = false;
+        }, 0);
+        return;
+      }
+
+      const selectedNodes = (Array.isArray(nodes) ? nodes : []).filter((n) => n?.selected);
+      const draggedNode = node ? (nodes.find((n) => n.id === node.id) || node) : null;
+      const toAttach =
+        draggedNode?.selected && selectedNodes.length ? selectedNodes : draggedNode ? [draggedNode] : [];
+      if (toAttach.length === 0) {
+        setGhostDrag(null);
+        window.setTimeout(() => {
+          ghostCaptureRef.current = false;
+        }, 0);
+        return;
+      }
+
+      const context = buildAttachedNodesContext(toAttach);
+
+      // 채팅에 붙일 때만 드래그 시작 좌표로 되돌림 — 캔버스 레이아웃은 유지하고 맥락만 전달
       const origin = dragOriginRef.current;
-      if (wasCaptured && origin?.positions && origin?.ids?.length) {
+      if (origin?.positions && origin?.ids?.length) {
         const idSet = new Set(origin.ids);
         setNodes?.((prev) =>
           prev.map((n) => {
@@ -234,23 +192,6 @@ export function useGhostDragToChat({
         );
       }
 
-      // 드래그가 \"의도\"되지 않았거나(짧은 탭) 드롭존이 아니면 고스트만 정리
-      if (!shouldAttach) {
-        setGhostDrag(null);
-        // 아주 짧은 딜레이로 끝자락 position change까지 흡수
-        window.setTimeout(() => {
-          ghostCaptureRef.current = false;
-        }, 0);
-        return;
-      }
-
-      const selectedNodes = (Array.isArray(nodes) ? nodes : []).filter((n) => n?.selected);
-      const draggedNode = node ? (nodes.find((n) => n.id === node.id) || node) : null;
-      const toAttach =
-        draggedNode?.selected && selectedNodes.length ? selectedNodes : draggedNode ? [draggedNode] : [];
-      if (toAttach.length === 0) return;
-
-      const context = buildAttachedNodesContext(toAttach);
       setAttachedNodes?.(context.attached_nodes);
       setActiveSuggestion?.(context);
       setDrawerMode?.("chat");

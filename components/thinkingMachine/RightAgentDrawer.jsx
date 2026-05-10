@@ -1,347 +1,35 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Check, GitBranch, Loader2, RefreshCcw, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { ArrowUp, GitBranch, Image as ImageIcon, Loader2, Sparkles, StickyNote } from "lucide-react";
 import {
-  NODE_VISIBILITY_FLOW,
-  getConfidenceMeta,
-  getNextVisibility,
-  getPreviousVisibility,
-  getRoleMeta,
-  getSourceTypeMeta,
+  getSuggestionTagMeta,
   getTypeMeta,
-  getVisibilityMeta,
-  getVisibilityIndex,
   normalizeNodeData,
+  normalizeSuggestionTags,
 } from "@/lib/thinkingMachine/nodeMeta";
-const DRAWER_TOP_SAFE_ZONE = 4;
+import NodeDetailCard from "@/components/thinkingMachine/cards/NodeDetailCard";
+import CandidateGraphCard from "@/components/thinkingMachine/cards/CandidateGraphCard";
+import AlignmentSummaryCard from "@/components/thinkingMachine/cards/AlignmentSummaryCard";
+import DrawerSuggestionCarousel from "@/components/thinkingMachine/drawer/DrawerSuggestionCarousel";
+import DrawerMeetingCaptureSection from "@/components/thinkingMachine/drawer/DrawerMeetingCaptureSection";
+import DrawerChatTranscript from "@/components/thinkingMachine/drawer/DrawerChatTranscript";
+import { getRightDrawerCopy } from "@/components/thinkingMachine/drawer/rightDrawerCopy";
 
-function MetaPill({ children, className }) {
-  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${className}`}>{children}</span>;
-}
-
-function ContextMiniCard({ item, isActive, onSelect }) {
-  const normalized = normalizeNodeData(item);
-  const colors = getTypeMeta(normalized.category);
-  const sourceMeta = getSourceTypeMeta(normalized.sourceType);
-  const visibilityMeta = getVisibilityMeta(normalized.visibility);
-
+function MicButtonIcon() {
   return (
-    <button
-      type="button"
-      className={`relative min-w-0 rounded-2xl border p-2.5 text-left shadow-[0_8px_18px_rgba(0,0,0,0.08)] backdrop-blur-[10px] transition ${
-        isActive
-          ? "border-teal-300 bg-white/72 ring-2 ring-teal-200"
-          : "border-white/70 bg-white/50 hover:bg-white/60"
-      }`}
-      onClick={() => onSelect?.(item)}
-      aria-label={`Select context card ${item?.title ?? ""}`}
-    >
-      <div className="mb-1 flex items-center gap-1.5 pr-2">
-        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${colors.tint} ${colors.text}`}>
-          {normalized.category}
-        </span>
-        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${sourceMeta.className}`}>
-          {sourceMeta.label}
-        </span>
-        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${visibilityMeta.className}`}>
-          {visibilityMeta.label}
-        </span>
-      </div>
-      <div className={`line-clamp-2 text-[11px] font-semibold leading-tight ${isActive ? colors.text : "text-slate-700"}`}>
-        {item.title}
-      </div>
-      <div className="mt-1 line-clamp-2 text-[10px] leading-tight text-slate-500">{item.content}</div>
-    </button>
-  );
-}
-
-function VisibilityStepper({ currentVisibility, onSetVisibility }) {
-  const currentIndex = getVisibilityIndex(currentVisibility);
-
-  return (
-    <div className="mt-3">
-      <div className="text-[11px] font-semibold text-slate-500">Sharing flow</div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {NODE_VISIBILITY_FLOW.map((step, index) => {
-          const meta = getVisibilityMeta(step);
-          const isActive = index === currentIndex;
-          const isReached = index <= currentIndex;
-          return (
-            <button
-              key={step}
-              type="button"
-              onClick={() => onSetVisibility?.(step)}
-              className={`rounded-full px-2 py-1 text-[10px] font-semibold transition ${
-                isActive ? meta.className : isReached ? "bg-white text-slate-700" : "bg-slate-100/80 text-slate-400"
-              }`}
-            >
-              {meta.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function NodeDetailCard({
-  selectedNode,
-  linkedNodes,
-  currentUserRole,
-  onPromote,
-  onDemote,
-  onShare,
-  onSetVisibility,
-  quickActions = [],
-  modeLabel = "",
-}) {
-  if (!selectedNode) return null;
-
-  const data = normalizeNodeData(selectedNode.data || {});
-  const typeMeta = getTypeMeta(data.category);
-  const sourceMeta = getSourceTypeMeta(data.sourceType);
-  const visibilityMeta = getVisibilityMeta(data.visibility);
-  const confidenceMeta = getConfidenceMeta(data.confidence);
-  const roleMeta = getRoleMeta(currentUserRole);
-  const linked = Array.isArray(linkedNodes) ? linkedNodes : [];
-  const canEdit = currentUserRole === "owner" || currentUserRole === "editor";
-
-  return (
-    <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Selected node</div>
-        <MetaPill className={`${typeMeta.tint} ${typeMeta.text}`}>{data.category}</MetaPill>
-      </div>
-      <div className="font-heading text-sm font-semibold text-slate-800">{selectedNode.data?.title || "Untitled node"}</div>
-      <div className="mt-1 text-xs leading-relaxed text-slate-600">{selectedNode.data?.content || "No content yet."}</div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <MetaPill className={roleMeta.className}>{roleMeta.label}</MetaPill>
-        <MetaPill className={sourceMeta.className}>{sourceMeta.label}</MetaPill>
-        <MetaPill className={visibilityMeta.className}>{visibilityMeta.label}</MetaPill>
-        <MetaPill className={confidenceMeta.className}>{confidenceMeta.label}</MetaPill>
-      </div>
-      {quickActions.length ? (
-        <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/85 px-2.5 py-2">
-          <div className="text-[11px] font-semibold text-slate-500">
-            {modeLabel ? `${modeLabel} quick actions` : "Quick actions"}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {quickActions.map((item) => (
-              <MetaPill key={item} className={`${getTypeMeta(item).tint} ${getTypeMeta(item).text}`}>
-                {item}
-              </MetaPill>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <VisibilityStepper currentVisibility={data.visibility} onSetVisibility={canEdit ? onSetVisibility : undefined} />
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          onClick={onDemote}
-          disabled={!canEdit || getPreviousVisibility(data.visibility) === data.visibility}
-          className="inline-flex items-center justify-center rounded-xl border border-white/80 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Demote
-        </button>
-        <button
-          type="button"
-          onClick={onPromote}
-          disabled={!canEdit || getNextVisibility(data.visibility) === data.visibility}
-          className="inline-flex items-center justify-center rounded-xl bg-teal-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Promote
-        </button>
-        <button
-          type="button"
-          onClick={onShare}
-          disabled={!canEdit || data.visibility === "shared" || data.visibility === "reviewed" || data.visibility === "agreed"}
-          className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Share
-        </button>
-      </div>
-      <div className="mt-3">
-        <div className="text-[11px] font-semibold text-slate-500">Linked nodes</div>
-        {linked.length ? (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {linked.map((item) => (
-              <div key={`${item.id}-${item.relation}-${item.direction}`} className="rounded-xl border border-slate-200/80 bg-slate-50/90 px-2.5 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="line-clamp-1 text-[12px] font-semibold text-slate-700">{item.title}</div>
-                  <MetaPill className="bg-white text-slate-500">{item.category}</MetaPill>
-                </div>
-                <div className="mt-1 text-[10px] uppercase tracking-wide text-slate-400">
-                  {item.direction === "outgoing" ? "Outgoing" : "Incoming"} · {item.relation.replace(/_/g, " ")}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-1 text-[11px] text-slate-400">No linked nodes yet.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CandidateGraphCard({ candidateGraph, onCommit, onCommitAsPrivate, onDiscard, candidateHint }) {
-  const candidateNodes = Array.isArray(candidateGraph?.nodes) ? candidateGraph.nodes : [];
-  const candidateEdges = Array.isArray(candidateGraph?.edges) ? candidateGraph.edges : [];
-  if (!candidateNodes.length) return null;
-
-  return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700">Candidate nodes</div>
-          <div className="mt-1 text-[11px] text-amber-800/80">
-            {candidateHint || "Nodes begin private. Mark them as candidate here, then share when ready."}
-          </div>
-        </div>
-        <MetaPill className="bg-white text-amber-700">{candidateNodes.length} nodes</MetaPill>
-      </div>
-
-      <div className="mt-3 flex flex-col gap-2">
-        {candidateNodes.map((node) => {
-          const data = normalizeNodeData(node.data || {});
-          const typeMeta = getTypeMeta(data.category);
-          const confidenceMeta = getConfidenceMeta(data.confidence);
-          return (
-            <div key={node.id} className="rounded-xl border border-amber-200/80 bg-white/85 px-2.5 py-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <MetaPill className={`${typeMeta.tint} ${typeMeta.text}`}>{data.category}</MetaPill>
-                <MetaPill className="bg-amber-100 text-amber-700">Candidate</MetaPill>
-                <MetaPill className={confidenceMeta.className}>{confidenceMeta.label}</MetaPill>
-              </div>
-              <div className="mt-1 text-[12px] font-semibold text-slate-800">{node.data?.title || "Untitled node"}</div>
-              <div className="mt-1 text-[11px] leading-relaxed text-slate-600">{node.data?.content || "No content yet."}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {candidateEdges.length ? (
-        <div className="mt-3 rounded-xl border border-white/70 bg-white/70 px-2.5 py-2 text-[11px] text-slate-600">
-          Relations: {candidateEdges.map((edge) => String(edge.label).replace(/_/g, " ")).join(", ")}
-        </div>
-      ) : null}
-
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          onClick={onCommitAsPrivate}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/80 bg-white/85 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-white"
-        >
-          Keep private
-        </button>
-        <button
-          type="button"
-          onClick={onCommit}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-teal-600"
-        >
-          <Check className="h-3.5 w-3.5" />
-          Add as candidate
-        </button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          className="inline-flex items-center justify-center rounded-xl border border-white/80 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white"
-        >
-          Discard
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function formatTimestamp(value) {
-  if (!value) return "Just now";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
-const VISIBLE_ACTIVITY_TYPES = new Set([
-  "node_shared",
-  "conflict_created",
-  "node_reviewed",
-  "node_agreed",
-  "decision_created",
-]);
-
-function shouldDisplayActivityItem(item) {
-  if (!item || typeof item !== "object") return false;
-  return VISIBLE_ACTIVITY_TYPES.has(String(item.type || "").toLowerCase());
-}
-
-function formatActivityTypeLabel(type) {
-  const normalized = String(type || "").toLowerCase();
-  if (normalized === "node_shared") return "Shared";
-  if (normalized === "conflict_created") return "Conflict raised";
-  if (normalized === "node_reviewed") return "Reviewed";
-  if (normalized === "node_agreed") return "Agreed";
-  if (normalized === "decision_created") return "Decision added";
-  return String(type || "").replace(/_/g, " ");
-}
-
-function ActivityLogCard({ projectLastUpdated, lastRefreshedAt, activityLog, onRefresh }) {
-  const items = (Array.isArray(activityLog) ? activityLog : []).filter(shouldDisplayActivityItem);
-
-  return (
-    <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Activity</div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            Updated {formatTimestamp(projectLastUpdated)} · Refreshed {formatTimestamp(lastRefreshedAt)}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
-        >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          Refresh
-        </button>
-      </div>
-
-      {items.length ? (
-        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200/80 bg-white/68">
-          {items.map((item, index) => (
-            <div
-              key={item.id}
-              className={`px-3 py-2.5 ${index !== items.length - 1 ? "border-b border-slate-200/75" : ""}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                    {formatActivityTypeLabel(item.type)}
-                  </div>
-                  <div className="mt-1 line-clamp-1 text-[12px] font-semibold text-slate-700">
-                    {item.nodeTitle || "Untitled node"}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-slate-500">
-                    {item.nodeType ? `${item.nodeType} · ` : ""}
-                    {item.userRole || "owner"} · {item.userId || "mock-user-1"}
-                  </div>
-                </div>
-                <div className="shrink-0 pt-0.5 text-[10px] text-slate-400">{formatTimestamp(item.timestamp)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-3 text-[11px] text-slate-400">No team-relevant activity yet in this project.</div>
-      )}
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-[18px] w-[18px]">
+      <rect x="9" y="3.5" width="6" height="10" rx="3" fill="currentColor" />
+      <path
+        d="M6.5 10.5C6.5 13.5376 8.96243 16 12 16C15.0376 16 17.5 13.5376 17.5 10.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path d="M12 16V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8.5 20H15.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -349,15 +37,12 @@ export default function RightAgentDrawer({
   isOpen,
   mode,
   suggestions,
-  onToggleMode,
   activeSuggestion,
   selectedNode,
   linkedNodes,
   candidateGraph,
+  alignmentSummary,
   currentUserRole = "owner",
-  projectLastUpdated,
-  activityLog,
-  lastRefreshedAt,
   chatMessages,
   chatInput,
   isChatLoading,
@@ -365,62 +50,56 @@ export default function RightAgentDrawer({
   onChatInputChange,
   onChatSubmit,
   onChatConvertToNodes,
+  inputMode = "workspace",
+  onInputModeChange,
+  meetingCaptureSummary,
+  isMeetingCaptureLoading = false,
   onCommitCandidateNodes,
   onCommitCandidateNodesAsPrivate,
   onDiscardCandidateNodes,
   onPromoteSelectedNode,
   onDemoteSelectedNode,
   onSetNodeVisibility,
-  onRefreshActivity,
   onChatContextSelect,
-  attachedContext,
+  onAlignmentSignalSelect,
   modeLabel,
   candidateHint,
   selectedNodeQuickActions,
   uiLanguage = "en",
+  onUiLanguageChange,
+  canvasMode = "personal",
+  onCanvasModeChange,
   chatButtonRef,
   chatDropZoneRef,
   isChatDropActive,
+  onClearSelectedNode,
+  onAddPostit,
+  onAddImage,
+  showDrawerHint = true,
 }) {
   const isTip = mode === "tip";
   const isChat = mode === "chat";
-  const contextItems = isChat
-    ? [...(attachedContext ? [attachedContext] : [])]
-    : suggestions;
-  const hasTipSignal = suggestions.length > 0;
+  const isMeetingCapture = inputMode === "meeting";
+  const suggestionItems = Array.isArray(suggestions) ? suggestions : [];
+  const shouldShowContextPanel = suggestionItems.length > 0;
   const activeMeta = normalizeNodeData(activeSuggestion || {});
   const categoryColors = getTypeMeta(activeMeta.category);
-  const confidenceMeta = getConfidenceMeta(activeMeta.confidence);
-  const sourceMeta = getSourceTypeMeta(activeMeta.sourceType);
-  const visibilityMeta = getVisibilityMeta(activeMeta.visibility);
+  const activeSuggestionTags = normalizeSuggestionTags(activeSuggestion?.suggestionTags || activeSuggestion?.tags, activeMeta);
+  const shouldShowActiveSuggestionCard = Boolean(activeSuggestion && activeSuggestion?.type !== "attachedNodes");
   const drawerFieldBaseFade =
-    "linear-gradient(90deg, rgba(166,255,211,0) 0%, rgba(166,255,211,0.70) 24%, rgba(166,255,211,1) 46%)";
-  const drawerFieldRadialAlpha =
-    "radial-gradient(100.27% 97.75% at 97.75% 50%, rgba(224,255,244,0.94) 0%, rgba(174,241,218,0.84) 22.12%, rgba(187,216,230,0.42) 80.17%, rgba(255,255,234,0) 100%)";
-  const drawerFieldLemonStrip =
-    "linear-gradient(90deg, rgba(241,255,138,0) 0%, rgba(241,255,138,0.70) 22%, rgba(241,255,138,0.34) 54%, rgba(241,255,138,0) 100%)";
-  const drawerFieldEdgeOverlay =
-    "linear-gradient(90deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.08) 46%, rgba(255,255,255,0) 100%)";
+    "linear-gradient(169.55deg, rgba(199, 251, 201, 0.3) 9.44%, rgba(179, 236, 236, 0.3) 97.4%)";
+  const drawerFieldRadialAlpha = "none";
+  const drawerFieldLemonStrip = "none";
+  const drawerFieldEdgeOverlay = "none";
   const chatBottomRef = useRef(null);
   const contextScrollRef = useRef(null);
   const panelScrollRef = useRef(null);
-  const copy = uiLanguage === "ko"
-    ? {
-        emptyChat: "노드를 선택해 오른쪽으로 드래그한 뒤 놓으면 채팅 컨텍스트로 첨부됩니다.",
-        emptySuggestions: "제안 카드를 선택해 에이전트와 reasoning 흐름을 확장하세요.",
-        emptyWorkspace: "노드 컨텍스트를 첨부해 워크스페이스 대화를 시작하세요.",
-        emptySuggestionState: "제안을 선택해 구조를 검토하거나 확장하세요.",
-        suggestionsTab: "Suggestions",
-        workspaceTab: "Workspace",
-      }
-    : {
-        emptyChat: "Select a node, drag it to the right, and drop it to attach it as chat context.",
-        emptySuggestions: "Select a suggestion card to expand the reasoning flow with the agent.",
-        emptyWorkspace: "Attach node context to begin the workspace conversation.",
-        emptySuggestionState: "Select a suggestion to inspect, challenge, or extend the reasoning.",
-        suggestionsTab: "Suggestions",
-        workspaceTab: "Workspace",
-      };
+  const [loadingOverlayText, setLoadingOverlayText] = useState("");
+  const [isLoadingOverlayExiting, setIsLoadingOverlayExiting] = useState(false);
+  const [canScrollSuggestionsLeft, setCanScrollSuggestionsLeft] = useState(false);
+  const [canScrollSuggestionsRight, setCanScrollSuggestionsRight] = useState(false);
+  const shouldShowDrawerHint = showDrawerHint && !selectedNode;
+  const copy = getRightDrawerCopy(uiLanguage);
 
   useEffect(() => {
     if (!isOpen || !isChat) return;
@@ -432,25 +111,80 @@ export default function RightAgentDrawer({
     panelScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, [mode, activeSuggestion?.id]);
 
+  useEffect(() => {
+    const el = contextScrollRef.current;
+    if (!el) return;
+
+    const updateScrollButtons = () => {
+      const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+      setCanScrollSuggestionsLeft(el.scrollLeft > 6);
+      setCanScrollSuggestionsRight(el.scrollLeft < maxScrollLeft - 6);
+    };
+
+    updateScrollButtons();
+    el.addEventListener("scroll", updateScrollButtons, { passive: true });
+    window.addEventListener("resize", updateScrollButtons);
+    return () => {
+      el.removeEventListener("scroll", updateScrollButtons);
+      window.removeEventListener("resize", updateScrollButtons);
+    };
+  }, [suggestionItems.length]);
+
+  useEffect(() => {
+    if (!isChatLoading && loadingOverlayText) {
+      const exitStartTimer = window.setTimeout(() => {
+        setIsLoadingOverlayExiting(true);
+      }, 0);
+      const exitTimer = window.setTimeout(() => {
+        setLoadingOverlayText("");
+        setIsLoadingOverlayExiting(false);
+      }, 240);
+
+      return () => {
+        window.clearTimeout(exitStartTimer);
+        window.clearTimeout(exitTimer);
+      };
+    }
+  }, [isChatLoading, loadingOverlayText]);
+
   const handleChatSubmit = (event) => {
     event.preventDefault();
+    const submittedText = String(chatInput || "").trim();
+    if (submittedText && !isChatLoading) {
+      setLoadingOverlayText(submittedText);
+      setIsLoadingOverlayExiting(false);
+    }
     onChatSubmit?.();
   };
 
+  const handleSuggestionScroll = (direction) => {
+    const el = contextScrollRef.current;
+    if (!el) return;
+    const delta = Math.max(168, Math.floor(el.clientWidth * 0.72));
+    el.scrollBy({
+      left: direction === "left" ? -delta : delta,
+      behavior: "smooth",
+    });
+  };
+
   return (
-    <div className="pointer-events-none absolute inset-y-0 right-0 z-[45] overflow-visible">
-      <div className="relative flex h-full w-[430px] transform-gpu">
+    <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-[45] overflow-visible">
+      <div className="relative flex h-full w-[365px] transform-gpu sm:w-[385px] lg:w-[397px]">
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 z-[0] w-[116px]"
+          className="pointer-events-none absolute inset-y-0 left-0 z-[0] w-[96px]"
           aria-hidden
           style={{ background: drawerFieldLemonStrip }}
         />
-        <div
+        <motion.div
           ref={chatDropZoneRef}
-          className={`relative h-full w-[430px] overflow-hidden rounded-l-[30px] pointer-events-auto opacity-100 ${
+          className={`relative h-full w-[365px] overflow-hidden rounded-none pointer-events-auto opacity-100 sm:w-[385px] lg:w-[397px] ${
             isChat && isChatDropActive ? "ring-4 ring-teal-300/40" : ""
           }`}
           aria-hidden={false}
+          initial={{ x: 44, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 44, opacity: 0 }}
+          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
           style={{
             background: `${drawerFieldRadialAlpha}, ${drawerFieldBaseFade}`,
           }}
@@ -460,217 +194,317 @@ export default function RightAgentDrawer({
             aria-hidden
             style={{ background: drawerFieldEdgeOverlay }}
           />
-          <div className="relative z-10 flex h-full min-h-0 flex-col justify-end px-6 pb-5 pl-9 pr-6 pt-[24px]">
-            <div className="flex max-h-[89vh] min-h-0 flex-col gap-3">
-            <div
-              ref={contextScrollRef}
-              className={`grid ${isChat ? "grid-cols-1" : "grid-cols-2"} shrink-0 gap-2 overflow-y-auto overflow-x-visible pl-0.5 pr-2 pb-3`}
-              style={{ maxHeight: "24%", paddingTop: DRAWER_TOP_SAFE_ZONE, scrollbarWidth: "none" }}
-            >
-              {contextItems.length > 0 ? (
-                contextItems.map((item) => (
-                  <ContextMiniCard
-                    key={item.id}
-                    item={item}
-                    isActive={activeSuggestion?.id === item.id}
-                    onSelect={onChatContextSelect}
-                  />
-                ))
-              ) : (
-                <div className="col-span-2 rounded-2xl border border-dashed border-white/75 bg-white/42 px-3 py-2 text-[11px] text-slate-600 backdrop-blur-[8px]">
-                  {isChat
-                    ? copy.emptyChat
-                    : copy.emptySuggestions}
+          <div
+            className={`pointer-events-none absolute inset-x-8 top-[62px] z-[11] flex justify-center transition-all duration-300 ${
+              shouldShowDrawerHint ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+            }`}
+            aria-hidden={!shouldShowDrawerHint}
+          >
+              <div
+                className="origin-top-center scale-[0.46] sm:scale-[0.485] lg:scale-[0.505]"
+                style={{
+                  width: "520px",
+                  height: "58px",
+                }}
+              >
+                <div
+                  className="flex h-[58px] w-[520px] items-center gap-[7px] rounded-[30px] pl-[14px] pr-[19px]"
+                  style={{
+                    background: "#FFFFFF",
+                    opacity: 0.85,
+                    boxShadow: "0px 1px 10px rgba(33, 97, 5, 0.08)",
+                  }}
+                >
+                  <div className="flex translate-x-[6px] items-center gap-[7px]">
+                    <Sparkles className="h-[36px] w-[34px] shrink-0 text-[#FD9A00]" strokeWidth={1.8} />
+                    <div
+                      className="whitespace-nowrap"
+                      style={{
+                        width: "432px",
+                        height: "34px",
+                        fontFamily: '"Pretendard Variable", "Instrument Sans", sans-serif',
+                        fontStyle: "normal",
+                        fontWeight: 600,
+                        fontSize: "18.8905px",
+                        lineHeight: "180%",
+                        color: "#758E71",
+                      }}
+                    >
+                      Start with a thought, or select a node to extend it.
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
-
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-white/65 bg-white/32 p-3 shadow-[0_10px_26px_rgba(0,0,0,0.10)] backdrop-blur-[12px]">
-              <div className="mb-3 flex items-center border-b border-white/65 pb-2">
-                <div className="inline-flex rounded-full border border-white/80 bg-white/76 p-1 shadow-sm">
+          <div className="relative z-10 flex h-full min-h-0 flex-col px-5 pb-4 pt-4">
+            <div className="mb-2 flex justify-end pr-1">
+              <div className="flex items-center gap-2">
+                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-white/80 bg-white/72 p-[2px] shadow-[0_7px_18px_rgba(76,108,90,0.10)] backdrop-blur-[14px]">
                   <button
                     type="button"
-                    onClick={() => onToggleMode("tip")}
-                    className={`relative rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                      isTip ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-white"
+                    onClick={() => onInputModeChange?.("workspace")}
+                    className={`inline-flex h-6 min-w-[74px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                      !isMeetingCapture
+                        ? "bg-[#6F8A7B] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
+                        : "text-[#839083]"
                     }`}
                   >
-                    {copy.suggestionsTab}
-                    {hasTipSignal ? (
-                      <span
-                        className={`ml-1.5 inline-block h-1.5 w-1.5 rounded-full ${isTip ? "bg-white/80" : "bg-fuchsia-400"}`}
-                        aria-hidden
-                      />
-                    ) : null}
+                    {copy.workspaceInputTab}
                   </button>
                   <button
                     type="button"
-                    onClick={() => onToggleMode("chat")}
-                    ref={chatButtonRef}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                      isChat ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-white"
-                    } ${isChatDropActive ? "ring-2 ring-teal-300/70" : ""}`}
+                    onClick={() => onInputModeChange?.("meeting")}
+                    className={`inline-flex h-6 min-w-[68px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                      isMeetingCapture
+                        ? "bg-[#6F8A7B] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
+                        : "text-[#839083]"
+                    }`}
                   >
-                    {copy.workspaceTab}
+                    {copy.meetingTab}
+                  </button>
+                </div>
+                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-white/80 bg-white/72 p-[2px] shadow-[0_7px_18px_rgba(76,108,90,0.10)] backdrop-blur-[14px]">
+                <button
+                  type="button"
+                  onClick={() => onCanvasModeChange?.("personal")}
+                  className={`inline-flex h-6 min-w-[62px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                    canvasMode === "personal"
+                      ? "bg-[#7BA592] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
+                      : "text-[#839083]"
+                  }`}
+                >
+                  Personal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCanvasModeChange?.("team")}
+                  className={`inline-flex h-6 min-w-[50px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                    canvasMode === "team"
+                      ? "bg-[#7BA592] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
+                      : "text-[#A2ABA1]"
+                  }`}
+                >
+                  Team
+                </button>
+                </div>
+                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-slate-200/80 bg-[#F0F1EF]/86 p-[2px] shadow-[0_5px_14px_rgba(15,23,42,0.06)] backdrop-blur-[14px]">
+                  <button
+                    type="button"
+                    onClick={() => onUiLanguageChange?.("en")}
+                    aria-label="Switch interface language to English"
+                    className={`inline-flex h-6 min-w-[31px] items-center justify-center rounded-[12px] px-2 text-[10px] font-bold transition ${
+                      uiLanguage === "en"
+                        ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUiLanguageChange?.("ko")}
+                    aria-label="Switch interface language to Korean"
+                    className={`inline-flex h-6 min-w-[31px] items-center justify-center rounded-[12px] px-2 text-[10px] font-bold transition ${
+                      uiLanguage === "ko"
+                        ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    KR
                   </button>
                 </div>
               </div>
+            </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/60 bg-white/25 px-3 py-2 text-sm text-slate-700 backdrop-blur-[12px]">
+            {shouldShowContextPanel ? (
+              <DrawerSuggestionCarousel
+                suggestionItems={suggestionItems}
+                activeSuggestion={activeSuggestion}
+                contextScrollRef={contextScrollRef}
+                canScrollSuggestionsLeft={canScrollSuggestionsLeft}
+                canScrollSuggestionsRight={canScrollSuggestionsRight}
+                onSuggestionScroll={handleSuggestionScroll}
+                onChatContextSelect={onChatContextSelect}
+              />
+            ) : null}
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-white/70 bg-[rgba(255,255,255,0.34)] px-3.5 pb-3 pt-4 shadow-[0_14px_28px_rgba(88,116,104,0.09)] backdrop-blur-[16px]">
+              <div className="min-h-0 flex-1 overflow-hidden text-sm text-slate-700">
                 <div className="flex h-full min-h-0 flex-col">
                   <div
                     ref={panelScrollRef}
-                    className="min-h-0 flex-1 overflow-y-auto pr-1"
+                    className="min-h-0 flex-1 overflow-y-auto px-1"
                     style={{ scrollbarWidth: "none" }}
                   >
-                    <div className="flex flex-col gap-2 pb-2">
-                    <NodeDetailCard
-                      selectedNode={selectedNode}
-                      linkedNodes={linkedNodes}
-                      currentUserRole={currentUserRole}
-                      modeLabel={modeLabel}
-                      quickActions={selectedNodeQuickActions}
-                      onPromote={onPromoteSelectedNode}
-                      onDemote={onDemoteSelectedNode}
-                      onShare={() => onSetNodeVisibility?.(selectedNode?.id, "shared")}
-                      onSetVisibility={(nextVisibility) => onSetNodeVisibility?.(selectedNode?.id, nextVisibility)}
-                    />
+                    <div className="flex flex-col gap-3 pb-2">
+                      <NodeDetailCard
+                        selectedNode={selectedNode}
+                        linkedNodes={linkedNodes}
+                        currentUserRole={currentUserRole}
+                        modeLabel={modeLabel}
+                        quickActions={selectedNodeQuickActions}
+                        onPromote={onPromoteSelectedNode}
+                        onDemote={onDemoteSelectedNode}
+                        onShare={() => onSetNodeVisibility?.(selectedNode?.id, "shared")}
+                        onSetVisibility={(nextVisibility) => onSetNodeVisibility?.(selectedNode?.id, nextVisibility)}
+                        onClearSelection={onClearSelectedNode}
+                      />
+                      <AlignmentSummaryCard
+                        selectedNode={selectedNode}
+                        summary={alignmentSummary}
+                        onSelectSignal={onAlignmentSignalSelect}
+                      />
+                      {isMeetingCapture ? (
+                        <DrawerMeetingCaptureSection meetingCaptureSummary={meetingCaptureSummary} />
+                      ) : null}
 
-                    {activeSuggestion ? (
-                      <div className={`rounded-xl border ${categoryColors.border} ${categoryColors.tint} px-2.5 py-2`}>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <div className={`text-[10px] font-bold uppercase tracking-wider ${categoryColors.text}`}>
-                            {activeMeta.category}
-                          </div>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${sourceMeta.className}`}>
-                            {sourceMeta.label}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${visibilityMeta.className}`}>
-                            {visibilityMeta.label}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${confidenceMeta.className}`}>
-                            {confidenceMeta.label}
-                          </span>
-                        </div>
-                        <div className="font-heading mt-1 line-clamp-1 text-xs font-semibold text-slate-800">
-                          {activeSuggestion.title}
-                        </div>
-                        {activeSuggestion?.type === "attachedNodes" && Array.isArray(activeSuggestion?.attached_nodes) && (
-                          <div className="mt-2 -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "none" }}>
-                            {activeSuggestion.attached_nodes.map((n) => (
-                              <span
-                                key={n.id}
-                                className="inline-flex shrink-0 max-w-full items-center gap-1 rounded-full border border-white/70 bg-white/70 px-2 py-0.5 text-[10px] text-slate-700"
-                                title={n?.content || n?.title || ""}
-                              >
-                                <span className="font-semibold">{n?.title || "Node"}</span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-white/70 bg-white/35 px-3 py-2 text-xs text-slate-600">
-                        {isChat
-                          ? copy.emptyWorkspace
-                          : copy.emptySuggestionState}
-                      </div>
-                    )}
-
-                    <CandidateGraphCard
-                      candidateGraph={candidateGraph}
-                      candidateHint={candidateHint}
-                      onCommit={onCommitCandidateNodes}
-                      onCommitAsPrivate={onCommitCandidateNodesAsPrivate}
-                      onDiscard={onDiscardCandidateNodes}
-                    />
-
-                    <ActivityLogCard
-                      projectLastUpdated={projectLastUpdated}
-                      lastRefreshedAt={lastRefreshedAt}
-                      activityLog={activityLog}
-                      onRefresh={onRefreshActivity}
-                    />
-
-                    <div className="flex flex-col gap-2">
-                        {chatMessages.length === 0 && !isChatLoading && activeSuggestion && (
-                          <div className="text-center text-xs text-slate-500">AI is preparing a response...</div>
-                        )}
-                        {chatMessages.map((msg, index) => (
+                      {shouldShowActiveSuggestionCard ? (
+                        <div
+                          className={`rounded-[14px] border ${categoryColors.border} ${categoryColors.tint} px-3`}
+                          style={{ paddingTop: 11, paddingBottom: 17 }}
+                        >
                           <div
-                            key={`${msg.role}-${index}`}
-                            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                            className="font-heading line-clamp-1 text-xs font-semibold text-slate-800"
+                            style={{ position: "relative", left: 3 }}
                           >
-                            <div
-                              className={`max-w-[88%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
-                                msg.role === "user"
-                                  ? "rounded-br-sm bg-indigo-500 text-white"
-                                  : "rounded-bl-sm border border-white/70 bg-white/70 text-slate-700"
-                              }`}
-                            >
-                              {msg.content}
-                            </div>
+                            {activeSuggestion.title}
                           </div>
-                        ))}
-                        {isChatLoading && (
-                          <div className="flex justify-start">
-                            <div className="inline-flex items-center gap-1.5 rounded-xl rounded-bl-sm border border-white/70 bg-white/72 px-2.5 py-2">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500" />
-                              <span className="text-xs text-slate-500">Thinking...</span>
-                            </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {[
+                              ["reasoning", activeSuggestionTags.reasoning],
+                              ["lens", activeSuggestionTags.lens],
+                              ["question", activeSuggestionTags.question],
+                            ].filter(([axis, value]) => !(axis === "lens" && value === "User")).map(([axis, value]) => {
+                              const meta = getSuggestionTagMeta(axis, value);
+                              return (
+                                <span key={`${axis}-${value}`} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.className}`}>
+                                  {value}
+                                </span>
+                              );
+                            })}
                           </div>
-                        )}
-                        <div ref={chatBottomRef} />
-                    </div>
+                        </div>
+                      ) : null}
+
+                      <CandidateGraphCard
+                        candidateGraph={candidateGraph}
+                        candidateHint={candidateHint}
+                        onCommit={onCommitCandidateNodes}
+                        onCommitAsPrivate={onCommitCandidateNodesAsPrivate}
+                        onDiscard={onDiscardCandidateNodes}
+                      />
+
+                      <DrawerChatTranscript
+                        chatMessages={chatMessages}
+                        isChatLoading={isChatLoading}
+                        activeSuggestion={activeSuggestion}
+                        chatBottomRef={chatBottomRef}
+                      />
                     </div>
                   </div>
 
-                    <div className="shrink-0 border-t border-white/65 pt-2">
-                      <form onSubmit={handleChatSubmit} className="flex items-center gap-1.5">
-                        <input
+                  <div className="shrink-0 pt-3">
+                    <div className="mb-2 flex items-center gap-2 px-1">
+                      <button
+                        type="button"
+                        onClick={onAddPostit}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/78 text-slate-600 shadow-[0_6px_14px_rgba(0,0,0,0.07)] transition hover:bg-white"
+                        aria-label={copy.note}
+                        title={copy.note}
+                      >
+                        <StickyNote className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onAddImage}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/78 text-slate-600 shadow-[0_6px_14px_rgba(0,0,0,0.07)] transition hover:bg-white"
+                        aria-label={copy.image}
+                        title={copy.image}
+                      >
+                        <ImageIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/78 text-slate-600 shadow-[0_6px_14px_rgba(0,0,0,0.07)] transition hover:bg-white"
+                        aria-label={copy.voice}
+                        title={copy.voice}
+                      >
+                        <MicButtonIcon />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleChatSubmit} className="space-y-2">
+                      <div
+                        ref={chatButtonRef}
+                        className="relative overflow-hidden rounded-[16px] border border-white/85 bg-white/88 px-4 pb-11 pt-3 shadow-[0_8px_18px_rgba(126,154,138,0.10)]"
+                      >
+                        {loadingOverlayText ? (
+                          <div
+                            className={`pointer-events-none absolute inset-x-4 top-3 bottom-12 transition-opacity duration-200 ${
+                              isLoadingOverlayExiting ? "opacity-0" : "opacity-100"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <div className="drawer-loading-gradient-text h-full w-full overflow-hidden whitespace-pre-wrap break-words text-[13px] font-medium leading-[1.45]">
+                              {loadingOverlayText}
+                            </div>
+                          </div>
+                        ) : null}
+                        <textarea
                           value={chatInput}
                           onChange={(event) => onChatInputChange?.(event.target.value)}
-                          placeholder={activeSuggestion ? "Continue the idea..." : "Select a context card to chat"}
-                          disabled={isChatLoading || !activeSuggestion}
-                          className="min-w-0 flex-1 rounded-xl border border-white/70 bg-white/82 px-3 py-2 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-teal-300"
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              handleChatSubmit(event);
+                            }
+                          }}
+                          placeholder={isMeetingCapture ? "Add one meeting turn or note block..." : selectedNode ? "Add a related thought..." : "Add a thought..."}
+                          disabled={isChatLoading || isMeetingCaptureLoading}
+                          rows={2}
+                          className={`min-h-[68px] w-full resize-none border-none bg-transparent pr-11 text-[13px] font-medium leading-[1.45] outline-none ${
+                            loadingOverlayText
+                              ? "text-transparent caret-transparent placeholder:text-transparent"
+                              : "text-slate-700 placeholder:text-[#A4B2C6]"
+                          }`}
                         />
                         <button
                           type="submit"
-                          disabled={isChatLoading || !chatInput?.trim() || !activeSuggestion}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-teal-500 text-white transition hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isChatLoading || isMeetingCaptureLoading || !chatInput?.trim()}
+                          className="absolute bottom-3.5 right-3.5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(97,129,95,0.35)] bg-[linear-gradient(136.99deg,rgba(199,255,232,0.28)_-0.49%,rgba(19,158,89,0.24)_142.16%),linear-gradient(0deg,rgba(147,205,186,0.2),rgba(147,205,186,0.2))] shadow-[0_6px_14px_rgba(61,107,79,0.10)] transition disabled:cursor-not-allowed disabled:opacity-50"
                           aria-label="Send message"
                         >
-                          <Send className="h-3.5 w-3.5" />
+                          <ArrowUp className="h-4 w-4 text-[#5A8054]" strokeWidth={2.1} />
                         </button>
-                      </form>
+                      </div>
+                    </form>
 
-                      {activeSuggestion && chatMessages.length >= 2 && (
-                        <button
-                          type="button"
-                          onClick={onChatConvertToNodes}
-                          disabled={isChatConverting}
-                          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-3 py-2 text-xs font-semibold text-white transition hover:from-indigo-600 hover:to-purple-600 disabled:opacity-55"
-                        >
-                          {isChatConverting ? (
-                            <>
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              Creating nodes...
-                            </>
-                          ) : (
-                            <>
-                              <GitBranch className="h-3 w-3" />
-                              Convert to node candidates
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
+                    {activeSuggestion && chatMessages.length >= 2 && !isMeetingCapture && (
+                      <button
+                        type="button"
+                        onClick={onChatConvertToNodes}
+                        disabled={isChatConverting}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-indigo-500 to-purple-500 px-3 py-2.5 text-xs font-semibold text-white transition hover:from-indigo-600 hover:to-purple-600 disabled:opacity-55"
+                      >
+                        {isChatConverting ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Creating nodes...
+                          </>
+                        ) : (
+                          <>
+                            <GitBranch className="h-3 w-3" />
+                            Convert to node candidates
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-            </div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

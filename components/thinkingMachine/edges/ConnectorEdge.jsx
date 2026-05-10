@@ -1,9 +1,9 @@
 "use client";
 
 import { BaseEdge } from "reactflow";
-import { getTypeMeta } from "@/lib/thinkingMachine/nodeMeta";
+import { getAlignmentVisualMeta } from "@/lib/thinkingMachine/reasoningAlignment";
 
-const DEFAULT_LINE_COLOR = "rgba(255, 255, 255, 0.68)";
+const DEFAULT_LINE_COLOR = "#AAF17B";
 const DEFAULT_LINE_WIDTH = 1.65;
 const DEFAULT_CLEARANCE = 20;
 const OUTER_RADIUS = 7;
@@ -221,6 +221,7 @@ function buildOrthogonalPoints(sourceX, sourceY, targetX, targetY, clearance, la
     targetY,
   });
 
+  let bestIdx = 0;
   for (let i = 1; i < candidates.length; i += 1) {
     const candidate = candidates[i];
     const score = scorePath(candidate, {
@@ -230,9 +231,12 @@ function buildOrthogonalPoints(sourceX, sourceY, targetX, targetY, clearance, la
       sourceY,
       targetY,
     });
-    if (score < bestScore) {
+    const effectivelyTied = Math.abs(score - bestScore) <= 1e-6;
+    const preferEarlierTie = effectivelyTied && i < bestIdx;
+    if (score < bestScore - 1e-6 || preferEarlierTie) {
       best = candidate;
       bestScore = score;
+      bestIdx = i;
     }
   }
 
@@ -252,25 +256,28 @@ export default function ConnectorEdge({
   const targetOffsetY = toFiniteNumber(data?.targetOffsetY, 0);
   const clearanceX = toFiniteNumber(data?.clearanceX, DEFAULT_CLEARANCE);
   const laneGap = toFiniteNumber(data?.laneGap, DEFAULT_LANE_GAP);
-  const lineColor = data?.lineColor || DEFAULT_LINE_COLOR;
+  const alignmentMeta = getAlignmentVisualMeta(data?.alignmentState);
+  const lineColor = data?.alignmentStroke || alignmentMeta.stroke || DEFAULT_LINE_COLOR;
   const lineWidth = toFiniteNumber(data?.lineWidth, DEFAULT_LINE_WIDTH);
   const curveTension = toFiniteNumber(data?.curveTension, DEFAULT_CURVE_TENSION);
+  const lineDash = data?.alignmentLineDash || alignmentMeta.lineDash;
 
-  const sy = sourceY + sourceOffsetY;
-  const ty = targetY + targetOffsetY;
-  const points = buildOrthogonalPoints(sourceX, sy, targetX, ty, clearanceX, laneGap);
+  // 드래그 중 서브픽셀 변동으로 경로 후보가 바뀌며 라벨·선이 떨리는 것을 줄임
+  const sx = Math.round(sourceX);
+  const tx = Math.round(targetX);
+  const sy = Math.round(sourceY + sourceOffsetY);
+  const ty = Math.round(targetY + targetOffsetY);
+  const points = buildOrthogonalPoints(sx, sy, tx, ty, clearanceX, laneGap);
   const path = buildOrganicBezierPath(points, curveTension);
-  const startPoint = points[0] ?? { x: sourceX, y: sy };
-  const endPoint = points[points.length - 1] ?? { x: targetX, y: ty };
-  const label = typeof data?.label === "string" ? data.label.replace(/_/g, " ") : "";
-  const labelX = (sourceX + targetX) / 2;
-  const labelY = (sy + ty) / 2;
-  const sourceTypeMeta = getTypeMeta(data?.sourceCategory);
+  const startPoint = points[0] ?? { x: sx, y: sy };
+  const endPoint = points[points.length - 1] ?? { x: tx, y: ty };
+  const alignmentLabel = typeof data?.alignmentLabel === "string" ? data.alignmentLabel : alignmentMeta.label;
+  const labelX = Math.round(startPoint.x + 8);
+  const labelY = Math.round(startPoint.y);
   const isSelected = Boolean(selected);
   const underlayStroke = isSelected ? "rgba(255, 255, 255, 0.24)" : "rgba(255, 255, 255, 0.12)";
   const primaryStroke = isSelected ? "rgba(255, 255, 255, 0.92)" : lineColor;
   const primaryWidth = isSelected ? lineWidth + 0.2 : lineWidth;
-  const endpointRadius = isSelected ? 2.1 : 1.8;
 
   return (
     <g className={`tm-connector-edge ${isSelected ? "is-selected" : ""}`}>
@@ -282,7 +289,8 @@ export default function ConnectorEdge({
           strokeLinecap: "round",
           strokeLinejoin: "round",
           opacity: isSelected ? 0.95 : 0.82,
-          filter: "blur(0.35px)",
+          filter: "none",
+          strokeDasharray: lineDash,
         }}
       />
       <BaseEdge
@@ -297,41 +305,31 @@ export default function ConnectorEdge({
           filter: isSelected
             ? "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.10))"
             : "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.08))",
+          strokeDasharray: lineDash,
         }}
       />
-      <circle
-        cx={startPoint.x}
-        cy={startPoint.y}
-        r={endpointRadius}
-        fill={primaryStroke}
-        stroke={isSelected ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.68)"}
-        strokeWidth="0.85"
-      />
-      <circle
-        cx={endPoint.x}
-        cy={endPoint.y}
-        r={endpointRadius}
-        fill={primaryStroke}
-        stroke={isSelected ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.68)"}
-        strokeWidth="0.85"
-      />
-      {label ? (
+      {alignmentLabel ? (
         <foreignObject
-          width={112}
+          width={150}
           height={24}
-          x={labelX - 56}
+          x={labelX}
           y={labelY - 12}
+          className="pointer-events-none select-none"
           requiredExtensions="http://www.w3.org/1999/xhtml"
         >
-          <div className="flex h-full w-full items-center justify-center">
+          <div className="flex h-full w-full select-none items-center justify-start">
             <span
-              className="rounded-full border border-white/40 px-2 py-1 text-[9px] font-semibold capitalize tracking-[-0.01em] text-slate-700 shadow-sm backdrop-blur-sm"
+              className="select-none whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-semibold tracking-[-0.01em] shadow-sm backdrop-blur-sm"
               style={{
-                backgroundColor: `${sourceTypeMeta.color}${isSelected ? "D9" : "B3"}`,
-                opacity: isSelected ? 0.98 : 0.92,
+                backgroundColor: alignmentMeta.labelBackground,
+                borderColor: alignmentMeta.labelBorder,
+                color: alignmentMeta.labelText,
+                opacity: isSelected ? 0.98 : 0.94,
+                WebkitUserSelect: "none",
+                userSelect: "none",
               }}
             >
-              {label}
+              {alignmentLabel}
             </span>
           </div>
         </foreignObject>

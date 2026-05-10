@@ -1,9 +1,10 @@
 import { createThinkingAgent } from "../../lib/thinkingAgent";
+import { getServerEnv } from "../../lib/serverEnv";
 
 let cachedAgent = null;
 
 function getAgent() {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getServerEnv("OPENAI_API_KEY");
   if (!apiKey) return { error: "OpenAI API Key is missing on server." };
   if (!cachedAgent) cachedAgent = createThinkingAgent({ apiKey });
   return { agent: cachedAgent };
@@ -22,7 +23,6 @@ export default async function handler(req, res) {
     const reply = await agent.chatWithSuggestion(req.body ?? {});
     return res.status(200).json({ reply });
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.error(e);
     return res.status(500).json({ error: String(e?.message ?? e) });
   }

@@ -1,9 +1,10 @@
 import { createThinkingAgent } from "../../lib/thinkingAgent";
+import { getServerEnv } from "../../lib/serverEnv";
 
 let cachedAgent = null;
 
 function getAgent() {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getServerEnv("OPENAI_API_KEY");
   if (!apiKey) return { error: "OpenAI API Key is missing on server." };
   if (!cachedAgent) cachedAgent = createThinkingAgent({ apiKey });
   return { agent: cachedAgent };
@@ -32,7 +33,6 @@ export default async function handler(req, res) {
 
     return res.status(200).json(result);
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.error(e);
     const msg =
       e?.name === "ZodError"

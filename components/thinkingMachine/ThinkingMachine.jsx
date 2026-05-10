@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     useNodesState,
     useEdgesState,
@@ -8,25 +8,41 @@ import {
 } from "reactflow";
 import { AnimatePresence, motion } from "framer-motion";
 import NodeMap from "./NodeMap";
-import LeftCanvasTools from "./LeftCanvasTools";
-import InputPanel from "./InputPanel";
+import LeftTeamContextPanel from "./LeftTeamContextPanel";
 import RightAgentDrawer from "./RightAgentDrawer";
 import TopBar from "./TopBar";
-import { toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
+import { getNodeSnapshot, getRelatedNodeIds } from "@/components/thinkingMachine/utils/graphSnapshots";
+import { buildAttachedNodesContext } from "@/components/thinkingMachine/utils/chatDropGeometry";
+import { decorateConnectorEdges, toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
-import { computeNodeBounds, relayoutTopLevelThinkingNodes, shiftClusterRelativeToAnchor, shiftClusterRightOfExisting } from "@/lib/thinkingMachine/graphMerge";
-import { analyze } from "@/lib/thinkingMachine/apiClient";
-import { useAdminMode } from "@/components/thinkingMachine/hooks/useAdminMode";
-import { useDrawerChat } from "@/components/thinkingMachine/hooks/useDrawerChat";
+import { computeNodeBounds, relayoutTopLevelThinkingNodes, shiftClusterRightOfExisting } from "@/lib/thinkingMachine/graphMerge";
+import { useAdminMode } from "@/hooks/useAdminMode";
 import { useDraftGrouping } from "@/components/thinkingMachine/hooks/useDraftGrouping";
 import { useGhostDragToChat } from "@/components/thinkingMachine/hooks/useGhostDragToChat";
+import { useThinkingCollaboration } from "@/components/thinkingMachine/hooks/useThinkingCollaboration";
+import { useThinkingGraphState } from "@/components/thinkingMachine/hooks/useThinkingGraphState";
+import { useThinkingAiAnalyze } from "@/components/thinkingMachine/hooks/useThinkingAiAnalyze";
+import { useRightDrawerChat } from "@/components/thinkingMachine/hooks/useRightDrawerChat";
+import { useProjectGraphSync } from "@/components/thinkingMachine/hooks/useProjectGraphSync";
+import { useChatGraphIngest } from "@/components/thinkingMachine/hooks/useChatGraphIngest";
+import { useMeetingCaptureFlow } from "@/components/thinkingMachine/hooks/useMeetingCaptureFlow";
+import { useTeamContextSummary } from "@/components/thinkingMachine/hooks/useTeamContextSummary";
+import {
+    buildMeetingMemoryReadout,
+    getDefaultMeetingMemory,
+    mergeMeetingMemory,
+} from "@/lib/thinkingMachine/meetingMemory";
+import { readCurrentUser } from "@/lib/thinkingMachine/clientUser";
+import { buildReasoningAlignmentAnalysis } from "@/lib/thinkingMachine/reasoningAlignment";
+import { buildTeamConflictAnalysis } from "@/lib/thinkingMachine/conflictAnalysis";
+import { explainConflict } from "@/lib/thinkingMachine/apiClient";
 import {
     getReasoningModeProfile,
     getRoleMeta,
     getNextVisibility,
     getPreviousVisibility,
+    normalizeLayerOrigin,
     normalizeReasoningStage,
-    normalizeOwnerId,
     normalizeRelationLabel,
     normalizeVisibility,
 } from "@/lib/thinkingMachine/nodeMeta";
@@ -35,63 +51,18 @@ const INITIAL_NODES = [];
 const INITIAL_EDGES = [];
 const ADMIN_MODE_STORAGE_KEY = "vtm-admin-mode-enabled";
 const ADMIN_HINT_DISMISSED_KEY = "vtm-admin-shortcut-hint-dismissed";
-const ADMIN_SHORTCUT_LABEL = "Ctrl/Cmd + Shift + A";
-const PERSONAL_VISIBILITY = new Set(["private", "candidate"]);
-const TEAM_VISIBILITY = new Set(["shared", "reviewed", "agreed"]);
+const UI_LANGUAGE_STORAGE_KEY = "thinkingMachineUiLanguage";
 const MOCK_CURRENT_USER_ID = "mock-user-1";
 const MOCK_CURRENT_USER_ROLE = "owner";
-const PROJECTS_STORAGE_KEY = "thinking-machine-projects";
-const AUTO_REFRESH_MS = 15000;
-const MAX_ACTIVITY_ITEMS = 24;
 const AUTO_FIT_MAX_ZOOM = 1;
 
-function mergeSuggestionUnique(prev, nextSuggestion) {
-    if (!nextSuggestion) return prev;
-    const key = `${String(nextSuggestion.category || "").toLowerCase()}::${String(nextSuggestion.title || "").trim().toLowerCase()}::${String(nextSuggestion.content || "").trim().toLowerCase()}`;
-    const existingIndex = prev.findIndex((item) => {
-        const existingKey = `${String(item?.category || "").toLowerCase()}::${String(item?.title || "").trim().toLowerCase()}::${String(item?.content || "").trim().toLowerCase()}`;
-        return existingKey === key;
-    });
-    if (existingIndex === -1) return [nextSuggestion, ...prev];
-    const clone = [...prev];
-    clone.splice(existingIndex, 1);
-    return [nextSuggestion, ...clone];
-}
-
-function getActivityStorageKey(projectId) {
-    return `thinking-machine-activity-${projectId}`;
-}
-
-function readProjectsFromStorage() {
-    if (typeof window === "undefined") return [];
+function readInitialUiLanguage() {
+    if (typeof window === "undefined") return "en";
     try {
-        const raw = window.localStorage.getItem(PROJECTS_STORAGE_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed : [];
+        return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) === "ko" ? "ko" : "en";
     } catch {
-        return [];
+        return "en";
     }
-}
-
-function writeProjectsToStorage(projects) {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
-}
-
-function readActivityLog(projectId) {
-    if (typeof window === "undefined" || !projectId) return [];
-    try {
-        const raw = window.localStorage.getItem(getActivityStorageKey(projectId));
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
-
-function writeActivityLog(projectId, entries) {
-    if (typeof window === "undefined" || !projectId) return;
-    window.localStorage.setItem(getActivityStorageKey(projectId), JSON.stringify(entries.slice(0, MAX_ACTIVITY_ITEMS)));
 }
 
 function cubicOut(t) {
@@ -103,6 +74,7 @@ export default function ThinkingMachine({
     initialProjectTitle = "Thinking Machine",
     projectMetaHref = "/projects",
     projectMetaLabel = "Back to projects",
+    currentUser: initialCurrentUser = null,
 }) {
     const [nodes, setNodes, baseOnNodesChange] = useNodesState(INITIAL_NODES);
     const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES);
@@ -112,25 +84,103 @@ export default function ThinkingMachine({
     const [stage, setStage] = useState("research-diverge");
     const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
     const [canvasMode, setCanvasMode] = useState("personal");
+    const [uiLanguage, setUiLanguage] = useState(readInitialUiLanguage);
+    const [inputMode, setInputMode] = useState("workspace");
     const [isCanvasInteractive, setIsCanvasInteractive] = useState(true);
     const [selectedNodeId, setSelectedNodeId] = useState(null);
     const [pendingChatCandidateGraph, setPendingChatCandidateGraph] = useState(null);
-    const [projectLastUpdated, setProjectLastUpdated] = useState(null);
-    const [activityLog, setActivityLog] = useState([]);
-    const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+    const [hasStartedInput, setHasStartedInput] = useState(false);
+    const [currentUser] = useState(() => {
+        if (initialCurrentUser) return initialCurrentUser;
+        if (typeof window !== "undefined") return readCurrentUser();
+        return null;
+    });
+    const [isGraphHydrating, setIsGraphHydrating] = useState(true);
+    const [selectedTeamMemberId, setSelectedTeamMemberId] = useState(null);
+    const [selectedActivityEventId, setSelectedActivityEventId] = useState(null);
+    const [teamContextSummary, setTeamContextSummary] = useState(null);
+    const [isTeamContextLoading, setIsTeamContextLoading] = useState(false);
+    const [teamContextError, setTeamContextError] = useState("");
+    const [isTeamContextPanelOpen, setIsTeamContextPanelOpen] = useState(false);
+    const [meetingMemory, setMeetingMemory] = useState(() => getDefaultMeetingMemory());
+    const [meetingCaptureSummary, setMeetingCaptureSummary] = useState(null);
+    const [isMeetingCaptureLoading, setIsMeetingCaptureLoading] = useState(false);
+    const [meetingSessionIdValue] = useState(() => `meeting-${Date.now()}`);
+    const meetingSessionIdRef = useRef(meetingSessionIdValue);
+    const lastSavedGraphRef = useRef("");
+    const lastSyncedTitleRef = useRef(initialProjectTitle);
+    const [openConflictNodeId, setOpenConflictNodeId] = useState(null);
+    const [conflictExplainResultByNodeId, setConflictExplainResultByNodeId] = useState({});
+    const [conflictExplainLoadingByNodeId, setConflictExplainLoadingByNodeId] = useState({});
+    const previousConflictStateRef = useRef({});
 
-    const { isAdminMode, showAdminShortcutHint, dismissAdminShortcutHint } = useAdminMode({
+    const { isAdminMode } = useAdminMode({
         storageKey: ADMIN_MODE_STORAGE_KEY,
         hintDismissedKey: ADMIN_HINT_DISMISSED_KEY,
     });
 
+    const currentUserId = currentUser?.id || MOCK_CURRENT_USER_ID;
+    const currentUserName = currentUser?.name || "You";
+    const currentUserRole = currentUser?.role || MOCK_CURRENT_USER_ROLE;
+    const currentUserEmail = currentUser?.email || "";
+    const currentUserPicture = currentUser?.picture || "";
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage);
+        } catch {
+            // Language preference should not block the workspace.
+        }
+    }, [uiLanguage]);
+
     // AI 제안 패널
     const [suggestions, setSuggestions] = useState([]);
+    const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState(() => new Set());
     const [highlightedNodeIds, setHighlightedNodeIds] = useState(new Set());
+    const nodeContextSuggestions = useMemo(() => {
+        return [...nodes]
+            .filter((node) => node?.type === "thinkingNode" && node?.id)
+            .reverse()
+            .map((node) => ({
+                id: `node-context-${node.id}`,
+                nodeId: node.id,
+                _source: "node-context",
+                type: "attachedNodes",
+                title: node?.data?.title || "",
+                content: node?.data?.content || "",
+                category: node?.data?.category,
+                phase: node?.data?.phase,
+                sourceType: node?.data?.sourceType,
+                visibility: node?.data?.visibility,
+                confidence: node?.data?.confidence || "medium",
+                attached_nodes: [
+                    {
+                        id: node.id,
+                        title: node?.data?.title || "",
+                        content: node?.data?.content || "",
+                        category: node?.data?.category,
+                        phase: node?.data?.phase,
+                    },
+                ],
+            }));
+    }, [nodes]);
+    const drawerSuggestions = useMemo(() => {
+        const combined = [...suggestions, ...nodeContextSuggestions];
+        return combined.filter((item) => item?.id && !dismissedSuggestionIds.has(item.id));
+    }, [dismissedSuggestionIds, nodeContextSuggestions, suggestions]);
+    const unseenSuggestions = useMemo(
+        () => drawerSuggestions,
+        [drawerSuggestions]
+    );
 
     // Chat state (Drawer Chat primary + optional legacy dialog fallback)
-    const [attachedNodes, setAttachedNodes] = useState([]); // [{id,title,content,category,phase,sourceType,visibility,confidence}]
+    const [, setAttachedNodes] = useState([]); // [{id,title,content,category,phase,sourceType,visibility,confidence}]
     const reactFlowRef = useRef(null);
+    const previewNodesFromChatRef = useRef(null);
+    const handlePreviewNodesFromChatProxy = useCallback((...args) => {
+        return previewNodesFromChatRef.current?.(...args);
+    }, []);
 
     const {
         activeSuggestion,
@@ -144,16 +194,34 @@ export default function ThinkingMachine({
         handleDrawerChatSubmit,
         handleDrawerChatConvertToNodes,
         handleDrawerContextSelect,
-    } = useDrawerChat({
-        suggestions,
+        resetChat,
+    } = useRightDrawerChat({
+        suggestions: unseenSuggestions,
         nodes,
-        onPreviewNodesFromChat: handlePreviewNodesFromChat,
+        onPreviewNodesFromChat: handlePreviewNodesFromChatProxy,
         isDrawerOpen,
         setIsDrawerOpen,
         drawerMode,
         setDrawerMode,
         stage,
     });
+
+    const handleDrawerModeChange = useCallback((nextMode) => {
+        handleDrawerModeToggle(nextMode);
+        setIsDrawerOpen(true);
+    }, [handleDrawerModeToggle]);
+
+    const handleDrawerSuggestionSelect = useCallback((item) => {
+        if (!item) return;
+        if (item?.id && item?._source !== "node-auto") {
+            setDismissedSuggestionIds((prev) => {
+                const next = new Set(prev);
+                next.add(item.id);
+                return next;
+            });
+        }
+        handleDrawerContextSelect(item);
+    }, [handleDrawerContextSelect]);
 
     const {
         selectedDraftIds,
@@ -170,6 +238,7 @@ export default function ThinkingMachine({
         handleDraftSubmit,
         handleSelectionChange,
         convertDraftsToGroup,
+        toggleIdeaGroupMode,
     } = useDraftGrouping({
         nodes,
         edges,
@@ -180,6 +249,8 @@ export default function ThinkingMachine({
         setSuggestions,
         reactFlowRef,
         stage,
+        currentUserId,
+        currentUserName,
     });
 
     const {
@@ -201,63 +272,54 @@ export default function ThinkingMachine({
         setIsDrawerOpen,
     });
 
-    const hasThinkingGraph = useMemo(() => {
-        return nodes.some((n) => n?.type === "thinkingNode" || n?.type === "ideaGroup");
-    }, [nodes]);
-    const currentRoleMeta = getRoleMeta(MOCK_CURRENT_USER_ROLE);
+    const {
+        projectLastUpdated,
+        activityLog,
+        teamMembers,
+        currentMember,
+        lastRefreshedAt,
+        recordProjectActivity,
+        refreshProjectCollaborationMeta,
+    } = useThinkingCollaboration({
+        projectId,
+        currentUserId,
+        currentUserRole,
+        currentUserName,
+        currentUserEmail,
+        currentUserPicture,
+    });
+    const effectiveCurrentUserRole = currentMember?.role || currentUserRole;
+    const currentRoleMeta = getRoleMeta(effectiveCurrentUserRole);
+    const normalizedStage = useMemo(() => normalizeReasoningStage(stage), [stage]);
 
-    const refreshProjectCollaborationMeta = useCallback(() => {
-        if (!projectId || typeof window === "undefined") return;
-        const projects = readProjectsFromStorage();
-        const matchedProject = projects.find((item) => item?.id === projectId) || null;
-        const nextActivity = readActivityLog(projectId);
-        startTransition(() => {
-            setProjectLastUpdated(matchedProject?.updatedAt || null);
-            setActivityLog(nextActivity);
-            setLastRefreshedAt(new Date().toISOString());
-        });
-    }, [projectId]);
-
-    const recordProjectActivity = useCallback((actionType, payload = {}) => {
-        if (!projectId || typeof window === "undefined") return;
-        const timestamp = new Date().toISOString();
-        const nextProjects = readProjectsFromStorage().map((project) =>
-            project?.id === projectId ? { ...project, updatedAt: timestamp } : project
-        );
-        writeProjectsToStorage(nextProjects);
-
-        const nextEntry = {
-            id: `${actionType}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
-            type: actionType,
-            timestamp,
-            userId: MOCK_CURRENT_USER_ID,
-            userRole: MOCK_CURRENT_USER_ROLE,
-            ...payload,
-        };
-        const nextActivity = [nextEntry, ...readActivityLog(projectId)].slice(0, MAX_ACTIVITY_ITEMS);
-        writeActivityLog(projectId, nextActivity);
-        refreshProjectCollaborationMeta();
-    }, [projectId, refreshProjectCollaborationMeta]);
+    useProjectGraphSync({
+        projectId,
+        nodes,
+        edges,
+        normalizedStage,
+        meetingMemory,
+        currentUserId,
+        currentUserName,
+        currentUserEmail,
+        currentUserPicture,
+        effectiveCurrentUserRole,
+        isGraphHydrating,
+        setNodes,
+        setEdges,
+        setStage,
+        setMeetingMemory,
+        setProjectTitle,
+        setHasStartedInput,
+        setIsGraphHydrating,
+        refreshProjectCollaborationMeta,
+        lastSavedGraphRef,
+        lastSyncedTitleRef,
+        projectTitle,
+    });
 
     const handleFlowInit = (instance) => {
         reactFlowRef.current = instance;
     };
-
-    const handleZoomIn = useCallback(() => {
-        reactFlowRef.current?.zoomIn?.({ duration: 220 });
-    }, []);
-
-    const handleZoomOut = useCallback(() => {
-        reactFlowRef.current?.zoomOut?.({ duration: 220 });
-    }, []);
-
-    const handleFitCanvas = useCallback(() => {
-        reactFlowRef.current?.fitView?.({ duration: 320, padding: 0.18, maxZoom: 1 });
-    }, []);
-
-    const handleToggleCanvasInteractive = useCallback(() => {
-        setIsCanvasInteractive((prev) => !prev);
-    }, []);
 
     const animateViewportToNodes = useCallback((targetNodes) => {
         const inst = reactFlowRef?.current;
@@ -290,120 +352,79 @@ export default function ThinkingMachine({
         }
     }, []);
 
-    useEffect(() => {
-        refreshProjectCollaborationMeta();
-    }, [refreshProjectCollaborationMeta]);
-
-    useEffect(() => {
-        if (!projectId) return undefined;
-        const intervalId = window.setInterval(() => {
-            refreshProjectCollaborationMeta();
-        }, AUTO_REFRESH_MS);
-        return () => window.clearInterval(intervalId);
-    }, [projectId, refreshProjectCollaborationMeta]);
-
-    // 채팅 대화에서 노드+엣지 추가
-    const handleAddNodesFromChat = useCallback((data, { commitVisibility = "shared" } = {}) => {
-        const incoming = Array.isArray(data?.nodes) ? data.nodes : [];
-        const incomingEdges = Array.isArray(data?.edges) ? data.edges : [];
-        const normalizedIncoming = incoming.map((n) => ({
-            ...n,
-            data: {
-                ...n.data,
-                ownerId: MOCK_CURRENT_USER_ID,
-                editedBy: "You",
-                visibility: normalizeVisibility(n?.data?.visibility === "candidate" ? commitVisibility : n?.data?.visibility),
+    const handleStageChange = useCallback((nextStage) => {
+        const safeStage = normalizeReasoningStage(nextStage);
+        if (safeStage === normalizedStage) return;
+        setStage(safeStage);
+        void recordProjectActivity("stage_changed", {
+            nodeTitle: safeStage,
+            nodeType: "Stage",
+            before: { stage: normalizedStage },
+            after: { stage: safeStage },
+            relatedNodeIds: [],
+            metadata: {
+                reason: "Canvas reasoning stage changed",
             },
-        }));
-        const rawNewNodes = normalizedIncoming.map((n) => toReactFlowNode(n, null));
-        const seededNodes = nodes.length ? shiftClusterRightOfExisting(nodes, rawNewNodes) : rawNewNodes;
-        const mergedNodes = [...nodes, ...seededNodes];
-        const nextEdges = [...edges, ...toConnectorEdges(incomingEdges, mergedNodes, edges)];
-        const relaidNodes = relayoutTopLevelThinkingNodes(mergedNodes, nextEdges);
-        const insertedIds = new Set(seededNodes.map((node) => node.id));
-
-        setNodes(relaidNodes);
-        setEdges(nextEdges);
-        animateViewportToNodes(relaidNodes.filter((node) => insertedIds.has(node.id)));
-        normalizedIncoming.forEach((node) => {
-            recordProjectActivity("node_created", {
-                nodeId: node.id,
-                nodeTitle: node?.data?.label,
-                nodeType: node?.data?.category,
-            });
-            if (node?.data?.category === "Conflict") {
-                recordProjectActivity("conflict_created", {
-                    nodeId: node.id,
-                    nodeTitle: node?.data?.label,
-                });
-            }
+            stage: safeStage,
         });
-    }, [animateViewportToNodes, edges, nodes, recordProjectActivity, setEdges, setNodes]);
+    }, [normalizedStage, recordProjectActivity]);
 
-    function handlePreviewNodesFromChat(data) {
-        const incoming = Array.isArray(data?.nodes) ? data.nodes : [];
-        const incomingEdges = Array.isArray(data?.edges) ? data.edges : [];
-        const candidateNodes = incoming.map((n) => ({
-            ...n,
-            data: {
-                ...n.data,
-                ownerId: MOCK_CURRENT_USER_ID,
-                editedBy: "You",
-                visibility: "candidate",
-            },
-        }));
-        const candidateEdges = incomingEdges.map((e) => ({
-            ...e,
-            label: normalizeRelationLabel(e?.label),
-        }));
-        setPendingChatCandidateGraph({
-            nodes: candidateNodes,
-            edges: candidateEdges,
-        });
-        setDrawerMode("chat");
-        setIsDrawerOpen(true);
-    }
-
-    const handleCommitCandidateNodes = useCallback(() => {
-        if (!pendingChatCandidateGraph) return;
-        handleAddNodesFromChat(pendingChatCandidateGraph, { commitVisibility: "candidate" });
-        setPendingChatCandidateGraph(null);
-    }, [handleAddNodesFromChat, pendingChatCandidateGraph]);
-
-    const handleCommitCandidateNodesAsPrivate = useCallback(() => {
-        if (!pendingChatCandidateGraph) return;
-        handleAddNodesFromChat(pendingChatCandidateGraph, { commitVisibility: "private" });
-        setPendingChatCandidateGraph(null);
-    }, [handleAddNodesFromChat, pendingChatCandidateGraph]);
-
-    const handleDiscardCandidateNodes = useCallback(() => {
-        setPendingChatCandidateGraph(null);
-    }, []);
-
-    const syncVisibilityChangeMock = useCallback((nodeId, nextVisibility) => {
-        void nodeId;
-        void nextVisibility;
-        // TODO: Replace this local-only mock with multi-user sync/persistence when collaboration is introduced.
-    }, []);
+    const {
+        handleAddNodesFromChat,
+        handlePreviewNodesFromChat,
+        handleCommitCandidateNodes,
+        handleCommitCandidateNodesAsPrivate,
+        handleDiscardCandidateNodes,
+        pendingCandidatePreview,
+    } = useChatGraphIngest({
+        nodes,
+        edges,
+        currentUserId,
+        currentUserName,
+        normalizedStage,
+        setNodes,
+        setEdges,
+        setActiveSuggestion,
+        pendingChatCandidateGraph,
+        setPendingChatCandidateGraph,
+        animateViewportToNodes,
+        recordProjectActivity,
+    });
+    useEffect(() => {
+        previewNodesFromChatRef.current = handlePreviewNodesFromChat;
+    }, [handlePreviewNodesFromChat]);
 
     const handleSetNodeVisibility = useCallback((nodeId, nextVisibility) => {
         const normalizedNext = normalizeVisibility(nextVisibility);
         let previousVisibility = null;
+        let previousLayerOrigin = "personal";
         let nextNodeTitle = "";
         let nextNodeType = "";
+        let beforeSnapshot = null;
+        let afterSnapshot = null;
+        const relatedNodeIds = getRelatedNodeIds(nodeId, edges);
         setNodes((prevNodes) =>
             prevNodes.map((node) => {
                 if (node.id !== nodeId || node.type !== "thinkingNode") return node;
                 previousVisibility = normalizeVisibility(node.data?.visibility);
+                previousLayerOrigin = normalizeLayerOrigin(node.data?.layerOrigin, previousVisibility);
                 nextNodeTitle = node.data?.title || "";
                 nextNodeType = node.data?.category || "";
+                beforeSnapshot = getNodeSnapshot(node, edges);
+                const isPromotingToTeam =
+                    ["private", "candidate"].includes(previousVisibility) &&
+                    ["shared", "reviewed", "agreed"].includes(normalizedNext);
                 const updated = {
                     ...node,
                     data: {
                         ...node.data,
-                        ownerId: MOCK_CURRENT_USER_ID,
-                        editedBy: "You",
+                        ownerId: currentUserId,
+                        editedBy: currentUserName,
                         visibility: normalizedNext,
+                        layerOrigin: isPromotingToTeam ? previousLayerOrigin : normalizeLayerOrigin(node.data?.layerOrigin, normalizedNext),
+                        promotedFromVisibility: isPromotingToTeam ? previousVisibility : node.data?.promotedFromVisibility || "",
+                        promotedAt: isPromotingToTeam ? new Date().toISOString() : node.data?.promotedAt || "",
+                        promotedBy: isPromotingToTeam ? currentUserName : node.data?.promotedBy || "",
                     },
                 };
                 const rebuilt = toReactFlowNode({
@@ -419,8 +440,17 @@ export default function ThinkingMachine({
                         sourceType: updated.data?.sourceType,
                         visibility: updated.data?.visibility,
                         confidence: updated.data?.confidence,
+                        layerOrigin: updated.data?.layerOrigin,
+                        promotedFromVisibility: updated.data?.promotedFromVisibility,
+                        promotedAt: updated.data?.promotedAt,
+                        promotedBy: updated.data?.promotedBy,
+                        conflictState: updated.data?.conflictState,
+                        conflictSummary: updated.data?.conflictSummary,
+                        conflictLinkedNodeIds: updated.data?.conflictLinkedNodeIds,
+                        conflictUpdatedAt: updated.data?.conflictUpdatedAt,
                     },
                 }, null);
+                afterSnapshot = getNodeSnapshot({ ...updated, ...rebuilt }, edges);
                 return {
                     ...updated,
                     ...rebuilt,
@@ -431,15 +461,42 @@ export default function ThinkingMachine({
                 };
             })
         );
-        if (normalizedNext === "shared" && previousVisibility !== "shared") {
-            recordProjectActivity("node_shared", {
+        void recordProjectActivity("node_visibility_changed", {
+            nodeId,
+            nodeTitle: nextNodeTitle,
+            nodeType: nextNodeType,
+            before: beforeSnapshot,
+            after: afterSnapshot,
+            relatedNodeIds,
+            stage: normalizedStage,
+        });
+        if (["shared", "reviewed", "agreed"].includes(normalizedNext) && ["private", "candidate"].includes(previousVisibility || "")) {
+            setCanvasMode("team");
+            void recordProjectActivity("node_promoted_to_team", {
                 nodeId,
                 nodeTitle: nextNodeTitle,
                 nodeType: nextNodeType,
+                before: beforeSnapshot,
+                after: afterSnapshot,
+                relatedNodeIds,
+                stage: normalizedStage,
+                metadata: {
+                    promotedFromVisibility: previousVisibility,
+                },
             });
         }
-        syncVisibilityChangeMock(nodeId, normalizedNext);
-    }, [recordProjectActivity, setNodes, syncVisibilityChangeMock]);
+        if (normalizedNext === "shared" && previousVisibility !== "shared") {
+            void recordProjectActivity("node_shared", {
+                nodeId,
+                nodeTitle: nextNodeTitle,
+                nodeType: nextNodeType,
+                before: beforeSnapshot,
+                after: afterSnapshot,
+                relatedNodeIds,
+                stage: normalizedStage,
+            });
+        }
+    }, [currentUserId, currentUserName, edges, normalizedStage, recordProjectActivity, setCanvasMode, setNodes]);
 
     const handleNodeSelectionChange = useCallback(
         ({ nodes: selectedNodes = [] } = {}) => {
@@ -447,85 +504,183 @@ export default function ThinkingMachine({
             const firstThinkingNode = selectedNodes.find((node) => node?.type === "thinkingNode");
             if (firstThinkingNode?.id) {
                 setSelectedNodeId(firstThinkingNode.id);
+                setDrawerMode("chat");
                 setIsDrawerOpen(true);
-            } else {
-                setSelectedNodeId(null);
             }
+            // 캔버스 빈 공간을 클릭해도 선택만 해제되고,
+            // 마지막으로 본 노드 컨텍스트와 AI 의견은 그대로 유지되도록
+            // 선택 노드를 강제로 null 로 리셋하지 않는다.
         },
         [handleSelectionChange]
     );
 
-    const selectedNode = useMemo(
-        () => nodes.find((node) => node?.id === selectedNodeId && node?.type === "thinkingNode") || null,
-        [nodes, selectedNodeId]
+    const {
+        hasThinkingGraph,
+        selectedNode,
+        visibleCanvasNodeIds,
+        canvasNodes,
+        canvasEdges,
+        selectedNodeLinkedNodes,
+    } = useThinkingGraphState({
+        nodes,
+        edges,
+        selectedNodeId,
+        canvasMode,
+        currentUserId,
+    });
+    const reasoningAlignmentAnalysis = useMemo(
+        () => buildReasoningAlignmentAnalysis({
+            nodes: canvasNodes,
+            edges: canvasEdges,
+            selectedNodeId,
+        }),
+        [canvasEdges, canvasNodes, selectedNodeId]
     );
-
-    const visibleCanvasNodeIds = useMemo(() => {
-        const visibleIds = new Set();
-
-        const isThinkingNodeVisible = (node) => {
-            const visibility = normalizeVisibility(node?.data?.visibility);
-            const ownerId = normalizeOwnerId(node?.data?.ownerId);
-            if (canvasMode === "personal") return ownerId === MOCK_CURRENT_USER_ID && PERSONAL_VISIBILITY.has(visibility);
-            return TEAM_VISIBILITY.has(visibility);
-        };
-
-        nodes.forEach((node) => {
-            if (!node?.id) return;
-
-            if (node.type === "thinkingNode") {
-                if (isThinkingNodeVisible(node)) {
-                    visibleIds.add(node.id);
-                    if (node.parentNode) visibleIds.add(node.parentNode);
-                }
-                return;
-            }
-
-            if (canvasMode === "personal" && (node.type === "postitDraft" || node.type === "imageDraft")) {
-                visibleIds.add(node.id);
-                if (node.parentNode) visibleIds.add(node.parentNode);
-                return;
-            }
-
-            if (node.type === "ideaGroup") {
-                const hasVisibleChildren = nodes.some((candidate) => candidate?.parentNode === node.id && visibleIds.has(candidate.id));
-                if (hasVisibleChildren) visibleIds.add(node.id);
-            }
-        });
-
-        nodes.forEach((node) => {
-            if (node?.type === "ideaGroup") {
-                const hasVisibleChildren = nodes.some((candidate) => candidate?.parentNode === node.id && visibleIds.has(candidate.id));
-                if (hasVisibleChildren) visibleIds.add(node.id);
-            }
-        });
-
-        return visibleIds;
-    }, [canvasMode, nodes]);
-
-    const canvasNodes = useMemo(
-        () =>
-            nodes
-                .filter((node) => visibleCanvasNodeIds.has(node.id))
-                .map((node) => ({
-                    ...node,
-                    className: [node.className || "", node.id === selectedNodeId ? "node-selected-focus" : ""]
-                        .filter(Boolean)
-                        .join(" "),
-                })),
-        [nodes, selectedNodeId, visibleCanvasNodeIds]
+    const teamConflictAnalysis = useMemo(
+        () => buildTeamConflictAnalysis({
+            nodes,
+            edges,
+        }),
+        [edges, nodes]
     );
-
-    const canvasEdges = useMemo(
-        () => edges.filter((edge) => visibleCanvasNodeIds.has(edge?.source) && visibleCanvasNodeIds.has(edge?.target)),
-        [edges, visibleCanvasNodeIds]
+    const decoratedCanvasEdges = useMemo(
+        () => decorateConnectorEdges(canvasEdges, reasoningAlignmentAnalysis),
+        [canvasEdges, reasoningAlignmentAnalysis]
+    );
+    const alignmentSummary = reasoningAlignmentAnalysis?.selectedSummary || {
+        counts: reasoningAlignmentAnalysis?.counts || {},
+        sections: reasoningAlignmentAnalysis?.sections || {},
+    };
+    const meetingMemoryReadout = useMemo(
+        () => buildMeetingMemoryReadout(meetingMemory, nodes),
+        [meetingMemory, nodes]
     );
 
     useEffect(() => {
+        setNodes((prevNodes) => {
+            let hasChanges = false;
+            const nextNodes = prevNodes.map((node) => {
+                if (node?.type !== "thinkingNode") return node;
+                const conflictMeta = teamConflictAnalysis?.conflictByNodeId?.[node.id] || null;
+                const nextConflictState = conflictMeta?.state || "none";
+                const nextConflictSummary = conflictMeta?.summary || "";
+                const nextConflictLinkedNodeIds = conflictMeta?.linkedNodeIds || [];
+                const currentConflictLinkedNodeIds = Array.isArray(node?.data?.conflictLinkedNodeIds)
+                    ? node.data.conflictLinkedNodeIds
+                    : [];
+                const idsChanged =
+                    currentConflictLinkedNodeIds.length !== nextConflictLinkedNodeIds.length ||
+                    currentConflictLinkedNodeIds.some((value, index) => value !== nextConflictLinkedNodeIds[index]);
+                const summaryChanged = (node?.data?.conflictSummary || "") !== nextConflictSummary;
+                const stateChanged = (node?.data?.conflictState || "none") !== nextConflictState;
+                if (!idsChanged && !summaryChanged && !stateChanged) return node;
+                hasChanges = true;
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        conflictState: nextConflictState,
+                        conflictSummary: nextConflictSummary,
+                        conflictLinkedNodeIds: nextConflictLinkedNodeIds,
+                        conflictUpdatedAt: nextConflictState === "none"
+                            ? ""
+                            : node?.data?.conflictUpdatedAt || new Date().toISOString(),
+                    },
+                };
+            });
+            return hasChanges ? nextNodes : prevNodes;
+        });
+    }, [setNodes, teamConflictAnalysis]);
+
+    useEffect(() => {
+        if (isGraphHydrating) return;
+        const previousStates = previousConflictStateRef.current || {};
+        const nextStates = {};
+        nodes.forEach((node) => {
+            if (node?.type !== "thinkingNode") return;
+            const nextConflict = teamConflictAnalysis?.conflictByNodeId?.[node.id] || null;
+            const nextState = nextConflict?.state || "none";
+            nextStates[node.id] = nextState;
+        });
+        if (Object.keys(previousStates).length === 0) {
+            previousConflictStateRef.current = nextStates;
+            return;
+        }
+        nodes.forEach((node) => {
+            if (node?.type !== "thinkingNode") return;
+            const nextConflict = teamConflictAnalysis?.conflictByNodeId?.[node.id] || null;
+            const nextState = nextConflict?.state || "none";
+            const previousState = previousStates[node.id] || "none";
+            if (nextState !== "none" && previousState !== nextState) {
+                void recordProjectActivity("node_conflict_detected", {
+                    nodeId: node.id,
+                    nodeTitle: node?.data?.title || "",
+                    nodeType: node?.data?.category || "",
+                    before: {
+                        conflictState: previousState,
+                    },
+                    after: {
+                        conflictState: nextState,
+                        conflictSummary: nextConflict?.summary || "",
+                    },
+                    relatedNodeIds: nextConflict?.linkedNodeIds || [],
+                    stage: normalizedStage,
+                    metadata: {
+                        conflictLabel: nextConflict?.label || "",
+                    },
+                });
+            }
+        });
+        previousConflictStateRef.current = nextStates;
+    }, [isGraphHydrating, nodes, normalizedStage, recordProjectActivity, teamConflictAnalysis]);
+
+    useEffect(() => {
         if (selectedNodeId && !visibleCanvasNodeIds.has(selectedNodeId)) {
-            setSelectedNodeId(null);
+            const clearSelectionTimer = window.setTimeout(() => {
+                setSelectedNodeId((currentId) => (currentId === selectedNodeId ? null : currentId));
+            }, 0);
+            return () => window.clearTimeout(clearSelectionTimer);
         }
     }, [selectedNodeId, visibleCanvasNodeIds]);
+
+    // 선택된 노드를 기반으로 AI 의견이 항상 Workspace 상단에 보이도록
+    // 자동 attachedNodes suggestion 을 만든다.
+    useEffect(() => {
+        if (!selectedNode) return;
+        // 사용자가 명시적으로 선택한 제안(activeSuggestion)이 있으면 건드리지 않는다.
+        if (activeSuggestion && activeSuggestion._source !== "node-auto") return;
+        if (activeSuggestion && activeSuggestion._source === "node-auto" && activeSuggestion.nodeId === selectedNode.id) {
+            return;
+        }
+
+        const autoSuggestion = {
+            id: `node-auto-${selectedNode.id}`,
+            nodeId: selectedNode.id,
+            _source: "node-auto",
+            type: "attachedNodes",
+            title: selectedNode.data?.title || "",
+            content: selectedNode.data?.content || "",
+            category: selectedNode.data?.category,
+            phase: selectedNode.data?.phase,
+            attached_nodes: [
+                {
+                    id: selectedNode.id,
+                    title: selectedNode.data?.title || "",
+                    content: selectedNode.data?.content || "",
+                    category: selectedNode.data?.category,
+                    phase: selectedNode.data?.phase,
+                },
+            ],
+        };
+
+        const syncDrawerTimer = window.setTimeout(() => {
+            setActiveSuggestion(autoSuggestion);
+            setDrawerMode("chat");
+            setIsDrawerOpen(true);
+        }, 0);
+
+        return () => window.clearTimeout(syncDrawerTimer);
+    }, [activeSuggestion, selectedNode, setActiveSuggestion, setDrawerMode, setIsDrawerOpen]);
 
     const handlePromoteSelectedNode = useCallback(() => {
         if (!selectedNodeId || !selectedNode) return;
@@ -537,214 +692,272 @@ export default function ThinkingMachine({
         handleSetNodeVisibility(selectedNodeId, getPreviousVisibility(selectedNode.data?.visibility));
     }, [handleSetNodeVisibility, selectedNode, selectedNodeId]);
 
-    const selectedNodeLinkedNodes = useMemo(() => {
-        if (!selectedNode) return [];
-        const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-        return edges
-            .filter((edge) => edge?.source === selectedNode.id || edge?.target === selectedNode.id)
-            .map((edge) => {
-                const isOutgoing = edge.source === selectedNode.id;
-                const linkedId = isOutgoing ? edge.target : edge.source;
-                const linkedNode = nodeMap.get(linkedId);
-                if (!linkedNode || linkedNode.type !== "thinkingNode") return null;
-                return {
-                    id: linkedNode.id,
-                    title: linkedNode.data?.title || "Untitled node",
-                    category: linkedNode.data?.category,
-                    visibility: linkedNode.data?.visibility,
-                    relation: normalizeRelationLabel(edge?.data?.label || edge?.label),
-                    direction: isOutgoing ? "outgoing" : "incoming",
-                };
-            })
-            .filter(Boolean);
-    }, [edges, nodes, selectedNode]);
+    const handleClearSelectedNode = useCallback(() => {
+        setSelectedNodeId(null);
+        setActiveSuggestion(null);
+        setOpenConflictNodeId(null);
+    }, [setActiveSuggestion]);
 
-    const pendingCandidatePreview = useMemo(() => {
-        if (!pendingChatCandidateGraph) return null;
-        return {
-            ...pendingChatCandidateGraph,
-            nodes: pendingChatCandidateGraph.nodes.map((node) => toReactFlowNode(node, null)),
-        };
-    }, [pendingChatCandidateGraph]);
-
-    const normalizedStage = useMemo(() => normalizeReasoningStage(stage), [stage]);
     const reasoningModeProfile = useMemo(() => getReasoningModeProfile(normalizedStage), [normalizedStage]);
-    const composerSuggestedTypes = useMemo(() => {
-        const modeBias = reasoningModeProfile.nodeBias || [];
-        if (!selectedNode) {
-            return modeBias.slice(0, 4);
+    const { handleInputSubmit } = useThinkingAiAnalyze({
+        nodes,
+        edges,
+        stage,
+        projectTitle,
+        setNodes,
+        setEdges,
+        setSuggestions,
+        setHighlightedNodeIds,
+        setDrawerMode,
+        setIsDrawerOpen,
+        recordProjectActivity,
+        animateViewportToNodes,
+        setIsAnalyzing,
+        currentUserId,
+        currentUserName,
+    });
+    const handleInputModeChange = useCallback((nextMode) => {
+        setInputMode(nextMode);
+        if (nextMode === "meeting") {
+            setActiveSuggestion(null);
+            resetChat?.();
+            setDrawerMode("chat");
+            setIsDrawerOpen(true);
         }
-        const category = selectedNode.data?.category;
-        const contextualMap = {
-            Problem: ["Evidence", "Insight", "Risk", "Constraint"],
-            Goal: ["Idea", "Option", "Constraint", "Risk"],
-            Insight: ["Evidence", "Idea", "OpenQuestion", "Risk"],
-            Evidence: ["Insight", "Conflict", "Risk", "OpenQuestion"],
-            Idea: ["Option", "Evidence", "Risk", "Constraint"],
-            Decision: ["Evidence", "Constraint", "Risk", "OpenQuestion"],
-        };
-        const base = contextualMap[category] || ["Insight", "Evidence", "Idea", "Risk"];
-        return [...new Set([...modeBias, ...base])].slice(0, 5);
-    }, [reasoningModeProfile.nodeBias, selectedNode]);
+    }, [resetChat, setActiveSuggestion]);
+    const { handleMeetingCaptureSubmit } = useMeetingCaptureFlow({
+        projectId,
+        projectTitle,
+        nodes,
+        edges,
+        currentUserId,
+        currentUserName,
+        normalizedStage,
+        meetingMemory,
+        meetingMemoryReadout,
+        meetingSessionIdRef,
+        setNodes,
+        setEdges,
+        setMeetingMemory,
+        setMeetingCaptureSummary,
+        setIsMeetingCaptureLoading,
+        setTeamContextError,
+        setIsTeamContextPanelOpen,
+        setHighlightedNodeIds,
+        animateViewportToNodes,
+        recordProjectActivity,
+    });
 
-    const composerHintText = useMemo(() => {
-        if (selectedNode) {
-            return reasoningModeProfile.selectedNodePrompt;
+    // 우측 Drawer 하단 입력창 동작:
+    // - 기본(컨텍스트 없음)일 때: 사용자 입력을 기반으로 /api/analyze 를 호출해 새 노드 + 제안 생성
+    // - 제안 카드/attachedNodes 컨텍스트가 있을 때: 해당 컨텍스트를 anchor 로 /api/chat 경로를 사용
+    const handleRightDrawerSubmit = useCallback(async () => {
+        const trimmedText = chatInput.trim();
+        if (!trimmedText) return;
+        setHasStartedInput(true);
+
+        if (inputMode === "meeting" && !isMeetingCaptureLoading) {
+            await handleMeetingCaptureSubmit(trimmedText);
+            setChatInput("");
+            return;
         }
-        return reasoningModeProfile.composerHint;
-    }, [reasoningModeProfile, selectedNode]);
 
-    const handleInputSubmit = useCallback(async ({ text, preferredType, selectedNode: inputContextNode } = {}) => {
-        const rawText = typeof text === "string" ? text.trim() : "";
-        if (!rawText) return;
-        setIsAnalyzing(true);
-
-        try {
-            const contextualText = inputContextNode
-                ? [
-                    `Project: ${projectTitle}`,
-                    `Selected node context: [${inputContextNode.data?.category}] ${inputContextNode.data?.title} - ${inputContextNode.data?.content || ""}`,
-                    preferredType ? `Preferred new node type: ${preferredType}.` : "",
-                    `User follow-up: ${rawText}`,
-                  ].filter(Boolean).join("\n")
-                : [projectTitle ? `Project: ${projectTitle}` : "", rawText].filter(Boolean).join("\n");
-
-            const payload = {
-                text: contextualText,
-                history: nodes.map((n) => ({
-                    id: n.id,
-                    data: {
-                        title: n.data.title,
-                        category: n.data.category,
-                        phase: n.data.phase,
-                    },
-                    position: n.position,
-                })),
-                stage,
-            };
-
-            const data = await analyze(payload);
-
-            // 제안 노드(is_ai_generated=true)와 사용자 노드 분리
-            const suggestionNodeData = data.nodes.find((n) => n.data.is_ai_generated);
-            const userNodeDatas = data.nodes
-                .filter((n) => !n.data.is_ai_generated)
-                .map((n) => ({
-                    ...n,
-                    data: {
-                        ...n.data,
-                        ownerId: MOCK_CURRENT_USER_ID,
-                        editedBy: "You",
-                        visibility: "private",
-                    },
-                }));
-
-            // e-suggest- 엣지에서 연결된 사용자 노드 ID 파악
-            const suggestEdge = data.edges.find((e) => e.id.startsWith("e-suggest-"));
-            const highlightedMainNodeId = suggestEdge ? suggestEdge.source : null;
-
-            // 사용자 노드 → ReactFlow
-            const rawNewNodes = userNodeDatas.map((n) => toReactFlowNode(n, highlightedMainNodeId));
-            const enrichedNodes = inputContextNode
-                ? shiftClusterRelativeToAnchor(inputContextNode, rawNewNodes)
-                : nodes.length
-                    ? shiftClusterRightOfExisting(nodes, rawNewNodes)
-                    : rawNewNodes;
-            const viewportTargets = inputContextNode ? [inputContextNode, ...enrichedNodes] : enrichedNodes;
-
-            // 제안 노드 → SuggestionPanel
-            if (suggestionNodeData) {
-                const newSuggestion = {
-                    id: `suggestion-${Date.now()}`,
-                    title: suggestionNodeData.data.label,
-                    content: suggestionNodeData.data.content,
-                    category: suggestionNodeData.data.category,
-                    phase: suggestionNodeData.data.phase,
-                    sourceType: suggestionNodeData.data.sourceType,
-                    visibility: suggestionNodeData.data.visibility,
-                    confidence: suggestionNodeData.data.confidence,
-                    ownerId: suggestionNodeData.data.ownerId,
-                    relatedNodeId: highlightedMainNodeId,
-                };
-                setSuggestions((prev) => mergeSuggestionUnique(prev, newSuggestion));
-                if (highlightedMainNodeId) {
-                    setHighlightedNodeIds((prev) => new Set([...prev, highlightedMainNodeId]));
-                }
-            }
-
-            // 엣지 처리 (e-suggest- 제외)
-            const updatedExistingNodes = nodes.map((n) => ({
-                ...n,
-                className: highlightedNodeIds.has(n.id) ? 'node-highlighted' : (n.className || ''),
-            }));
-            const mergedNodes = [...updatedExistingNodes, ...enrichedNodes];
-            const rawEdges = data.edges.filter((e) => !e.id.startsWith("e-suggest-"));
-            const newReactFlowEdges = toConnectorEdges(rawEdges, mergedNodes, edges);
-            const nextEdges = [...edges, ...newReactFlowEdges];
-            const relaidNodes = relayoutTopLevelThinkingNodes(mergedNodes, nextEdges);
-            const insertedIds = new Set(enrichedNodes.map((node) => node.id));
-            const relaidViewportTargets = inputContextNode
-                ? relaidNodes.filter((node) => node.id === inputContextNode.id || insertedIds.has(node.id))
-                : relaidNodes.filter((node) => insertedIds.has(node.id));
-
-            setNodes(relaidNodes);
-            setEdges(nextEdges);
-            animateViewportToNodes(relaidViewportTargets.length ? relaidViewportTargets : viewportTargets);
-            userNodeDatas.forEach((node) => {
-                recordProjectActivity("node_created", {
-                    nodeId: node.id,
-                    nodeTitle: node?.data?.label,
-                    nodeType: node?.data?.category,
-                });
-                if (node?.data?.category === "Conflict") {
-                    recordProjectActivity("conflict_created", {
-                        nodeId: node.id,
-                        nodeTitle: node?.data?.label,
-                    });
-                }
+        if (!activeSuggestion && !isAnalyzing) {
+            await handleInputSubmit({
+                text: trimmedText,
+                selectedNode,
             });
-
-        } catch (error) {
-            console.error("Failed to analyze input:", error);
-            const serverMsg =
-                error?.response?.data?.error ||
-                error?.response?.data?.detail ||
-                error?.message;
-            alert(serverMsg ? `AI Agent error: ${serverMsg}` : "AI Agent error. Please try again.");
-        } finally {
-            setIsAnalyzing(false);
+            setChatInput("");
+            return;
         }
-    }, [animateViewportToNodes, edges, highlightedNodeIds, nodes, projectTitle, recordProjectActivity, setEdges, setNodes, stage]);
+
+        await handleDrawerChatSubmit();
+    }, [activeSuggestion, chatInput, handleDrawerChatSubmit, handleInputSubmit, handleMeetingCaptureSubmit, inputMode, isAnalyzing, isMeetingCaptureLoading, selectedNode, setChatInput]);
+
+    const focusNodesByIds = useCallback((nodeIds = []) => {
+        const ids = Array.from(new Set((Array.isArray(nodeIds) ? nodeIds : []).filter(Boolean)));
+        if (!ids.length) return;
+        setCanvasMode("team");
+        setHighlightedNodeIds(new Set(ids));
+        const targetNodes = nodes.filter((node) => ids.includes(node.id));
+        if (targetNodes.length) {
+            animateViewportToNodes(targetNodes);
+            const firstTarget = targetNodes.find((node) => node?.type === "thinkingNode");
+            if (firstTarget?.id) {
+                setSelectedNodeId(firstTarget.id);
+                setDrawerMode("chat");
+                setIsDrawerOpen(true);
+            }
+        }
+    }, [animateViewportToNodes, nodes]);
+
+    const handleAlignmentSignalSelect = useCallback((item) => {
+        const ids = Array.from(new Set((Array.isArray(item?.nodeIds) ? item.nodeIds : []).filter(Boolean)));
+        const relatedNodes = nodes.filter((node) => ids.includes(node.id) && node?.type === "thinkingNode");
+        if (!relatedNodes.length) return;
+
+        const context = buildAttachedNodesContext(relatedNodes);
+        const signalLabel = item?.label || "Reasoning signal";
+        const signalSummary = item?.summary || "";
+
+        setCanvasMode("team");
+        setHighlightedNodeIds(new Set(ids));
+        animateViewportToNodes(relatedNodes);
+        setSelectedNodeId(relatedNodes[0]?.id || null);
+        setActiveSuggestion({
+            ...context,
+            id: `alignment-${item?.id || context.id}`,
+            title: signalLabel,
+            content: signalSummary || context.content,
+            category: "Insight",
+            initialUserMessage: `Help me resolve this reasoning alignment signal: "${signalSummary || signalLabel}". Suggest the smallest next comment, evidence, or clarification that would move it forward.`,
+        });
+        setDrawerMode("chat");
+        setIsDrawerOpen(true);
+        setHasStartedInput(true);
+    }, [animateViewportToNodes, nodes, setActiveSuggestion]);
+
+    const {
+        filteredTeamActivity,
+        handleSelectTeamMember,
+        handleSelectActivity,
+        handleExplainTeamContext,
+    } = useTeamContextSummary({
+        activityLog,
+        teamMembers,
+        selectedTeamMemberId,
+        setSelectedTeamMemberId,
+        selectedActivityEventId,
+        setSelectedActivityEventId,
+        setTeamContextSummary,
+        setIsTeamContextLoading,
+        setTeamContextError,
+        nodes,
+        focusNodesByIds,
+        normalizedStage,
+        projectId,
+        projectTitle,
+    });
+
+    const handleToggleTeamContextPanel = useCallback(() => {
+        setIsTeamContextPanelOpen((prev) => !prev);
+    }, []);
+
+    const handleToggleConflictPopover = useCallback((nodeId, nextOpen) => {
+        if (nextOpen) {
+            setSelectedNodeId(nodeId || null);
+        }
+        setOpenConflictNodeId(nextOpen ? nodeId : null);
+    }, []);
+
+    const handleExplainConflict = useCallback(async (nodeId) => {
+        const conflictMeta = teamConflictAnalysis?.conflictByNodeId?.[nodeId];
+        const selectedConflictNode = nodes.find((node) => node?.id === nodeId && node?.type === "thinkingNode");
+        if (!conflictMeta || !selectedConflictNode) return;
+        const conflictingNodes = nodes
+            .filter((node) => conflictMeta.linkedNodeIds.includes(node.id) && node?.type === "thinkingNode")
+            .map((node) => ({
+                id: node.id,
+                title: node?.data?.title || "",
+                content: node?.data?.content || "",
+                category: node?.data?.category,
+                phase: node?.data?.phase,
+            }));
+        const surroundingNodeIds = new Set([
+            ...getRelatedNodeIds(nodeId, edges),
+            ...conflictMeta.linkedNodeIds.flatMap((relatedId) => getRelatedNodeIds(relatedId, edges)),
+        ]);
+        conflictMeta.linkedNodeIds.forEach((relatedId) => surroundingNodeIds.delete(relatedId));
+        surroundingNodeIds.delete(nodeId);
+        const surroundingNodes = nodes
+            .filter((node) => surroundingNodeIds.has(node.id) && node?.type === "thinkingNode")
+            .slice(0, 6)
+            .map((node) => ({
+                id: node.id,
+                title: node?.data?.title || "",
+                content: node?.data?.content || "",
+                category: node?.data?.category,
+                phase: node?.data?.phase,
+            }));
+        const relevantActivity = (Array.isArray(activityLog) ? activityLog : [])
+            .filter((item) => item?.nodeId === nodeId || (item?.relatedNodeIds || []).some((relatedId) => conflictMeta.linkedNodeIds.includes(relatedId)))
+            .slice(0, 6);
+
+        setConflictExplainLoadingByNodeId((prev) => ({
+            ...prev,
+            [nodeId]: true,
+        }));
+        try {
+            const result = await explainConflict({
+                projectTitle,
+                stage: normalizedStage,
+                selectedNode: {
+                    id: selectedConflictNode.id,
+                    title: selectedConflictNode?.data?.title || "",
+                    content: selectedConflictNode?.data?.content || "",
+                    category: selectedConflictNode?.data?.category,
+                    phase: selectedConflictNode?.data?.phase,
+                },
+                conflictingNodes,
+                surroundingNodes,
+                activityEvents: relevantActivity,
+            });
+            setConflictExplainResultByNodeId((prev) => ({
+                ...prev,
+                [nodeId]: result,
+            }));
+        } catch (error) {
+            const message =
+                error?.response?.data?.error ||
+                error?.message ||
+                "Failed to explain the conflict.";
+            setConflictExplainResultByNodeId((prev) => ({
+                ...prev,
+                [nodeId]: {
+                    summary: message,
+                    whyDifferent: "The AI explanation could not be generated right now.",
+                    assumptionGap: "",
+                    riskIfIgnored: "",
+                    suggestedNextStep: "Try again after the graph or network state stabilizes.",
+                },
+            }));
+        } finally {
+            setConflictExplainLoadingByNodeId((prev) => ({
+                ...prev,
+                [nodeId]: false,
+            }));
+        }
+    }, [activityLog, edges, nodes, normalizedStage, projectTitle, teamConflictAnalysis]);
 
     return (
         <div className="w-full h-screen relative flex flex-col overflow-hidden bg-slate-50">
+            <div
+                className="pointer-events-none absolute bottom-7 left-6 z-[20] flex h-[24.5px] w-[157px] items-center whitespace-nowrap"
+                style={{
+                    fontFamily: '"Pretendard Variable", "Instrument Sans", sans-serif',
+                    fontStyle: "normal",
+                    fontWeight: 600,
+                    fontSize: "13.59805px",
+                    lineHeight: "180%",
+                    letterSpacing: "0.14em",
+                    color: "#4B5D7B",
+                }}
+            >
+                THINKING MACHINE
+            </div>
             <TopBar
                 stage={normalizedStage}
-                onStageChange={setStage}
+                onStageChange={handleStageChange}
                 projectTitle={projectTitle}
                 onProjectTitleChange={setProjectTitle}
                 projectMetaHref={projectMetaHref}
                 projectMetaLabel="Project workspace"
                 canvasMode={canvasMode}
                 onCanvasModeChange={setCanvasMode}
+                drawerMode={drawerMode}
+                onDrawerModeChange={handleDrawerModeChange}
+                isDrawerOpen={isDrawerOpen}
             />
-
-            {showAdminShortcutHint && (
-                <div className="pointer-events-auto absolute left-1/2 top-14 z-[80] -translate-x-1/2">
-                    <div className="flex items-center gap-3 rounded-2xl border border-white/70 bg-white/78 px-4 py-2 text-xs text-slate-700 shadow-lg backdrop-blur-md">
-                        <span>
-                            Press <span className="font-semibold">{ADMIN_SHORTCUT_LABEL}</span> to toggle Admin Mode.
-                        </span>
-                        <button
-                            type="button"
-                            className="rounded-full border border-slate-300/80 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-white"
-                            onClick={dismissAdminShortcutHint}
-                        >
-                            Dismiss
-                        </button>
-                    </div>
-                </div>
-            )}
 
             <header className="absolute top-0 left-0 right-0 z-50 p-6 flex justify-end items-center bg-transparent pointer-events-none">
                 <div className="flex gap-2 pointer-events-auto">
@@ -769,6 +982,24 @@ export default function ThinkingMachine({
             </header>
 
             <main className="flex-1 w-full h-full relative">
+                <LeftTeamContextPanel
+                    isOpen={isTeamContextPanelOpen}
+                    teamMembers={teamMembers}
+                    activityItems={filteredTeamActivity}
+                    selectedMemberId={selectedTeamMemberId}
+                    selectedActivityId={selectedActivityEventId}
+                    summary={teamContextSummary}
+                    isSummaryLoading={isTeamContextLoading}
+                    summaryError={teamContextError}
+                    meetingMemoryReadout={meetingMemoryReadout}
+                    isMeetingMemoryLoading={isMeetingCaptureLoading}
+                    currentUserId={currentUserId}
+                    onToggle={handleToggleTeamContextPanel}
+                    onSelectMember={handleSelectTeamMember}
+                    onSelectActivity={handleSelectActivity}
+                    onExplainContext={handleExplainTeamContext}
+                    onFocusNode={(nodeId) => focusNodesByIds([nodeId])}
+                />
                 {!hasThinkingGraph ? (
                     <div className="tm-canvas-bg h-full w-full" data-stage={stage}>
                         <div className="absolute inset-0 z-[5]" />
@@ -777,7 +1008,7 @@ export default function ThinkingMachine({
                     <>
                         <NodeMap
                             nodes={canvasNodes}
-                            edges={canvasEdges}
+                            edges={decoratedCanvasEdges}
                             onNodesChange={filteredOnNodesChange}
                             onEdgesChange={onEdgesChange}
                             highlightedNodeIds={highlightedNodeIds}
@@ -793,35 +1024,20 @@ export default function ThinkingMachine({
                                 onImagePick: handleImagePick,
                                 onImageChangeCaption: handleImageChangeCaption,
                                 onDraftSubmit: handleDraftSubmit,
+                                onToggleIdeaGroup: toggleIdeaGroupMode,
                             }}
                             draftSubmittingIds={draftSubmittingIds}
                             canvasStage={stage}
+                            conflictByNodeId={teamConflictAnalysis?.conflictByNodeId || {}}
+                            openConflictNodeId={openConflictNodeId}
+                            conflictExplainResultByNodeId={conflictExplainResultByNodeId}
+                            conflictExplainLoadingByNodeId={conflictExplainLoadingByNodeId}
+                            onToggleConflictPopover={handleToggleConflictPopover}
+                            onExplainConflict={handleExplainConflict}
                         />
 
-                        <LeftCanvasTools
-                            onAddPostit={createPostitDraft}
-                            onAddImage={createImageDraft}
-                            onZoomIn={handleZoomIn}
-                            onZoomOut={handleZoomOut}
-                            onFitView={handleFitCanvas}
-                            onToggleInteractive={handleToggleCanvasInteractive}
-                            isInteractive={isCanvasInteractive}
-                            uiLanguage="en"
-                        />
                     </>
                 )}
-
-                <InputPanel
-                    onSubmit={handleInputSubmit}
-                    isAnalyzing={isAnalyzing}
-                    selectedNode={selectedNode}
-                    hasThinkingGraph={hasThinkingGraph}
-                    suggestedTypes={composerSuggestedTypes}
-                    hintText={composerHintText}
-                    stage={reasoningModeProfile.label}
-                    placeholderText={reasoningModeProfile.composerPlaceholder}
-                    selectedNodePromptText={reasoningModeProfile.selectedNodePrompt}
-                />
 
                 {showDraftConvertPrompt && (
                     <div className="pointer-events-none absolute inset-x-0 top-20 z-[75] flex justify-center">
@@ -850,60 +1066,64 @@ export default function ThinkingMachine({
                     </div>
                 )}
 
-                {hasThinkingGraph && (
-                    <RightAgentDrawer
-                        isOpen={isDrawerOpen}
-                        mode={drawerMode}
-                        suggestions={suggestions}
-                        onToggleMode={handleDrawerModeToggle}
-                        activeSuggestion={activeSuggestion}
-                        selectedNode={selectedNode}
-                        linkedNodes={selectedNodeLinkedNodes}
-                        candidateGraph={pendingCandidatePreview}
-                        currentUserRole={MOCK_CURRENT_USER_ROLE}
-                        projectLastUpdated={projectLastUpdated}
-                        activityLog={activityLog}
-                        lastRefreshedAt={lastRefreshedAt}
-                        onRefreshActivity={refreshProjectCollaborationMeta}
-                        chatMessages={chatMessages}
-                        chatInput={chatInput}
-                        isChatLoading={isChatLoading}
-                        isChatConverting={isChatConverting}
-                        onChatInputChange={setChatInput}
-                        onChatSubmit={handleDrawerChatSubmit}
-                        onChatConvertToNodes={handleDrawerChatConvertToNodes}
-                        onCommitCandidateNodes={handleCommitCandidateNodes}
-                        onCommitCandidateNodesAsPrivate={handleCommitCandidateNodesAsPrivate}
-                        onDiscardCandidateNodes={handleDiscardCandidateNodes}
-                        onPromoteSelectedNode={handlePromoteSelectedNode}
-                        onDemoteSelectedNode={handleDemoteSelectedNode}
-                        onSetNodeVisibility={handleSetNodeVisibility}
-                        onChatContextSelect={handleDrawerContextSelect}
-                        modeLabel={reasoningModeProfile.label}
-                        candidateHint={reasoningModeProfile.candidateHint}
-                        selectedNodeQuickActions={reasoningModeProfile.selectedNodeActions}
-                        uiLanguage="en"
-                        attachedContext={
-                            attachedNodes.length
-                                ? {
-                                    id: "attached-nodes",
-                                    type: "attachedNodes",
-                                    title: attachedNodes.length === 1 ? "Attached node" : `Attached nodes (${attachedNodes.length})`,
-                                    content: "Use these nodes as the primary context for this chat.",
-                                    category: "Insight",
-                                    phase: "Problem",
-                                    sourceType: "mixed",
-                                    visibility: "shared",
-                                    confidence: "medium",
-                                    attached_nodes: attachedNodes,
+                <AnimatePresence>
+                    {isDrawerOpen ? (
+                        <RightAgentDrawer
+                            isOpen={isDrawerOpen}
+                            mode={drawerMode}
+                            stage={normalizedStage}
+                            suggestions={unseenSuggestions}
+                            onStageChange={handleStageChange}
+                            activeSuggestion={activeSuggestion}
+                            selectedNode={selectedNode}
+                            linkedNodes={selectedNodeLinkedNodes}
+                            candidateGraph={pendingCandidatePreview}
+                            alignmentSummary={alignmentSummary}
+                            currentUserRole={effectiveCurrentUserRole}
+                            projectLastUpdated={projectLastUpdated}
+                            activityLog={activityLog}
+                            lastRefreshedAt={lastRefreshedAt}
+                            chatMessages={chatMessages}
+                            chatInput={chatInput}
+                            isChatLoading={isAnalyzing || isChatLoading}
+                            isChatConverting={isChatConverting}
+                            inputMode={inputMode}
+                            onInputModeChange={handleInputModeChange}
+                            meetingCaptureSummary={meetingCaptureSummary}
+                            isMeetingCaptureLoading={isMeetingCaptureLoading}
+                            onChatInputChange={(value) => {
+                                if (String(value || "").trim().length > 0) {
+                                    setHasStartedInput(true);
                                 }
-                                : null
-                        }
-                        chatButtonRef={chatButtonRef}
-                        chatDropZoneRef={chatDropZoneRef}
-                        isChatDropActive={isChatDropActive}
-                    />
-                )}
+                                setChatInput(value);
+                            }}
+                            onChatSubmit={handleRightDrawerSubmit}
+                            onChatConvertToNodes={handleDrawerChatConvertToNodes}
+                            onCommitCandidateNodes={handleCommitCandidateNodes}
+                            onCommitCandidateNodesAsPrivate={handleCommitCandidateNodesAsPrivate}
+                            onDiscardCandidateNodes={handleDiscardCandidateNodes}
+                            onPromoteSelectedNode={handlePromoteSelectedNode}
+                            onDemoteSelectedNode={handleDemoteSelectedNode}
+                            onSetNodeVisibility={handleSetNodeVisibility}
+                            onChatContextSelect={handleDrawerSuggestionSelect}
+                            onAlignmentSignalSelect={handleAlignmentSignalSelect}
+                            modeLabel={reasoningModeProfile.label}
+                            candidateHint={reasoningModeProfile.candidateHint}
+                            selectedNodeQuickActions={reasoningModeProfile.selectedNodeActions}
+                            uiLanguage={uiLanguage}
+                            onUiLanguageChange={setUiLanguage}
+                            canvasMode={canvasMode}
+                            onCanvasModeChange={setCanvasMode}
+                            chatButtonRef={chatButtonRef}
+                            chatDropZoneRef={chatDropZoneRef}
+                            isChatDropActive={isChatDropActive}
+                            onClearSelectedNode={handleClearSelectedNode}
+                            onAddPostit={createPostitDraft}
+                            onAddImage={createImageDraft}
+                            showDrawerHint={!hasStartedInput && !nodes.some((node) => node?.type === "thinkingNode")}
+                        />
+                    ) : null}
+                </AnimatePresence>
 
                 <AnimatePresence>
                     {ghostDrag && (

@@ -1,184 +1,141 @@
 # Thinking Machine
 
-Thinking Machine is a conversational reasoning workspace built on Next.js Pages Router.
-It combines a node-based canvas with a personal AI workspace so that conversation can evolve into structured thought.
+Thinking Machine is a project-based reasoning workspace for turning loose thoughts into a clearer shared structure.
 
-Instead of treating the canvas as a generic diagram tool, the product is moving toward a hybrid model:
+It is not a generic mind map. The product is designed around a specific workflow:
 
-- conversation drives structure
-- the canvas stores evolving reasoning
-- the right panel acts as a personal agent workspace
-- users decide what stays private, what becomes a candidate, and what gets shared
+- capture an early thought
+- turn it into reasoning nodes
+- see how nodes align, partially align, or remain unresolved
+- resolve gaps through a focused right-side workspace
+- decide what stays personal and what becomes team-visible
 
-## Vision
+The current interface prioritizes information design over feature breadth. It intentionally avoids proposal comparison, search exploration, and advanced copilot behavior in this phase.
 
-Thinking Machine is designed for people who need to think through messy topics, not just collect notes.
-The long-term goal is to support a workflow where:
+## Product Intent
 
-- a user explores a topic with a personal AI partner
-- the system turns that conversation into reasoning nodes
-- nodes represent problems, goals, evidence, assumptions, risks, options, and decisions
-- the graph gradually becomes a shared thinking surface rather than a loose brainstorm board
+Thinking Machine helps a person or small team make sense of ambiguous work: brand direction, research synthesis, strategy framing, product concepts, or design reasoning.
 
-In short:
+The canvas is the structured memory. The right panel is the working surface. Together they support a loop:
 
-- chat for exploration
-- graph for structure
-- visibility states for collaboration
+1. Add or select a thought.
+2. Inspect the reasoning graph around it.
+3. Identify what needs definition, evidence, validation, or sharing.
+4. Resolve unresolved differences by adding clarification or related context.
+5. Promote stronger reasoning from personal work into team context.
 
-## Current Product Shape
+The goal is to make reasoning visible without overwhelming the user with too many tags, labels, or decorative states.
 
-The current app already includes the core product direction:
+## Product Screenshots
 
-- login gate at `/`
-- project dashboard at `/projects`
-- project workspace at `/projects/[id]`
-- Thinking Machine canvas mounted per project
-- bottom-centered composer for conversation-first input
-- right-side personal agent workspace
-- reasoning-based node system instead of 5W1H
-- local collaboration simulation with activity, visibility, and role metadata
+### Workspace Overview
 
-## Core Concepts
+The full workspace combines the reasoning canvas with the right-side workspace panel. The canvas shows the structure of the project while the panel highlights alignment signals and unresolved reasoning that can be acted on.
 
-### Reasoning Nodes
+![Thinking Machine workspace overview](docs/screenshots/workspace-overview.png)
 
-The canvas uses reasoning-oriented node types:
+### Reasoning Graph Close-Up
 
-- `Problem`
-- `Goal`
-- `Insight`
-- `Evidence`
-- `Assumption`
-- `Constraint`
-- `Idea`
-- `Option`
-- `Risk`
-- `Conflict`
-- `Decision`
-- `OpenQuestion`
+The canvas uses draggable reasoning nodes and lightweight relationship labels. Node ports stay neutral, while relationship state is communicated through the edge color and alignment pill.
 
-Each node can also carry metadata such as:
+![Reasoning graph close-up](docs/screenshots/reasoning-graph-closeup.png)
 
-- `sourceType`
-- `visibility`
-- `confidence`
-- `ownerId`
-- `editedBy`
+## Current Features
 
-### Visibility Flow
+### Project Workspace
 
-The app separates private and shared thinking with a staged flow:
+- Project dashboard at `/projects`
+- Project detail workspace at `/projects/[id]`
+- Editable project title in the workspace header
+- Local project persistence through browser storage
+- Mock login entry from `/`
 
-- `private`
-- `candidate`
-- `shared`
-- `reviewed`
-- `agreed`
+### Reasoning Canvas
 
-This is currently local-state driven and intentionally lightweight.
+- React Flow canvas for draggable reasoning nodes
+- Node categories such as `Problem`, `Goal`, `Insight`, `Evidence`, `Assumption`, `Constraint`, `Risk`, `Decision`, and `OpenQuestion`
+- Neutral node connection ports to reduce color noise
+- Relationship state shown through edge color and pill labels only
+- Relationship states include `Aligned`, `Partial alignment`, and `Unresolved difference`
+- Canvas nodes use a grab cursor because they are drag-and-drop objects
 
-### Two Canvas Modes
+### Action-Oriented Node States
 
-The workspace can be viewed in two collaboration layers:
+Canvas cards avoid repetitive tags like `User`, `Why`, `Problem`, and `Solution`.
 
-- `Personal`
-  shows private and candidate work
-- `Team`
-  shows shared, reviewed, and agreed nodes
+Instead, nodes surface actionable states:
 
-### Reasoning Modes
+- `Needs Definition`
+- `Needs Evidence`
+- `Needs Validation`
+- `Ready to Share`
 
-The top-right controls are not cosmetic filters.
-They define the current reasoning mode as a 2x2 matrix:
+These states react to linked nodes. For example, adding supporting evidence can remove a `Needs Evidence` state instead of leaving the warning permanently visible.
 
-- Focus: `Research` or `Design`
-- Breadth: `Diverge` or `Converge`
+### Right Workspace Panel
 
-These modes influence:
+The right panel is the primary interaction surface for selected context.
 
-- AI prompting
-- suggested node types
-- composer behavior
-- candidate suggestion direction
+It includes:
 
-## Main User Flow
+- compact selected-node details
+- related reasoning context
+- chat-style responses and follow-up input
+- attachment actions for note, image, and voice placeholders
+- suggestion carousel cards
+- language toggle for selected UI helper copy
 
-1. Log in from the root page.
-2. Open or create a project from `/projects`.
-3. Enter the project workspace.
-4. Use the bottom composer to add a thought or extend a selected node.
-5. Let the AI turn that input into reasoning nodes and edges.
-6. Review suggestions in the right-side workspace.
-7. Promote visibility only when a thought is ready to move toward the shared graph.
+Core product terms remain in English, including `Workspace`, `Meeting`, `Personal`, `Team`, node categories, and relationship states.
 
-## Screenshots
+### Reasoning Alignment
 
-The current workspace is organized around three primary surfaces:
+The alignment section summarizes relationship health in the visible graph.
 
-- top navigation for project context and reasoning mode
-- center canvas for reasoning nodes and relations
-- right-side workspace for suggestions, activity, and private agent interactions
+It uses a compact status row:
 
-Suggested screenshot set for documentation:
+- `Aligned`
+- `Partial alignment`
+- `Unresolved`
 
-1. Login screen
-   show the auth entry flow at `/`
-2. Projects dashboard
-   show project creation and project list state
-3. Project workspace
-   show the canvas, bottom composer, and right-side workspace together
-4. Reasoning graph close-up
-   show node types, relation labels, and visibility-driven structure
-5. Personal vs Team modes
-   show the difference between private/candidate thinking and shared/reviewed/agreed thinking
+Unresolved cards are interactive. Clicking one attaches the relevant nodes to the right panel and asks the agent for the smallest useful next clarification, comment, or evidence that could move the reasoning forward.
 
-If you want, the next step can be adding exported PNG assets under a repo folder such as `docs/screenshots/` and embedding them directly in this README.
+### Team Context
 
-## How To Use In 60 Seconds
+The team context panel includes:
 
-1. Open the app and log in from `/`.
-2. Create a new project from `/projects`.
-3. Enter the workspace and type one clear thought into the bottom composer.
-4. Let the AI turn that input into reasoning nodes on the canvas.
-5. Click a node to continue the thought from that specific context.
-6. Use the right-side workspace to review suggestions and candidate structure.
-7. Keep early thinking `private`, move stronger ideas to `candidate`, and only promote to `shared` when ready.
-8. Switch between `Personal` and `Team` to inspect private exploration versus shared reasoning.
-9. Use `Research / Design` and `Diverge / Converge` to steer how the AI structures the next step.
+- member list with lightweight actor icons
+- activity panel instead of a timeline label
+- compact activity cards with node type, node title, actor icon, and timestamp
+- local activity tracking for changes that affect the reasoning context
 
-In one sentence:
+This is currently a local collaboration model, not real-time multi-user sync.
 
-- start with a thought, grow it into a graph, then decide what becomes shared team reasoning
+## Design Principles
 
-## Routes
+The current UI direction follows a few explicit rules:
 
-### `/`
+- titles should appear before tags
+- tags should not compete with the main content
+- repeated labels should be removed when they do not change user action
+- relationship meaning should be communicated by one clear visual system
+- passive warnings should become clickable paths toward resolution
+- cards should use cursor affordances that match behavior: grab on canvas, pointer in panels
 
-Auth entry screen.
+## What Is Not Included Yet
 
-- localStorage-based mock login
-- redirects logged-in users to `/projects`
+This phase does not include:
 
-### `/projects`
+- proposal comparison
+- search exploration
+- advanced copilot orchestration
+- real-time collaboration
+- production authentication
+- database-backed persistence
+- final AI automation workflows
 
-Project dashboard.
+Some AI endpoints exist, but the product should still be understood as an MVP workspace with placeholder and early-stage AI behavior.
 
-- loads project list from localStorage
-- creates new projects
-- opens existing projects
-
-### `/projects/[id]`
-
-Project workspace.
-
-- loads the selected project context
-- mounts `ThinkingMachine`
-- passes `projectId` into the workspace
-
-## Architecture Overview
-
-### Frontend
+## Tech Stack
 
 - Next.js 16
 - React 19
@@ -186,31 +143,22 @@ Project workspace.
 - React Flow
 - Framer Motion
 - Tailwind CSS 4
-
-### AI Layer
-
 - OpenAI SDK
-- Zod-based schema validation
-- `lib/thinkingAgent.js`
+- Zod
 
-The AI layer is responsible for:
+## Important Routes
 
-- node extraction
-- reasoning-type classification
-- conflict detection
-- decision suggestion
-- missing-structure suggestion
-- conversation-to-node conversion
+### `/`
 
-### Local Collaboration Model
+Mock login entry screen.
 
-There is no backend sync yet.
-Collaboration behavior is currently simulated with local state and localStorage:
+### `/projects`
 
-- projects
-- activity log
-- visibility changes
-- last updated timestamps
+Project dashboard for creating and opening projects.
+
+### `/projects/[id]`
+
+Main Thinking Machine workspace with canvas, right workspace panel, and team context panel.
 
 ## Important Files
 
@@ -226,25 +174,25 @@ pages/
 
 components/thinkingMachine/
   ThinkingMachine.jsx
-  TopBar.jsx
   NodeMap.jsx
-  InputPanel.jsx
   RightAgentDrawer.jsx
-  LeftCanvasTools.jsx
+  LeftTeamContextPanel.jsx
+  cards/
+  drawer/
   edges/
-  nodes/
   hooks/
+  layout/
+  nodes/
+  teamContext/
 
-lib/
-  thinkingAgent.js
-  thinkingMachine/
-    nodeMeta.js
-    graphMerge.js
-    connectorEdges.js
-    reactflowTransforms.js
+lib/thinkingMachine/
+  nodeMeta.js
+  reasoningAlignment.js
+  connectorEdges.js
+  reactflowTransforms.js
+  projectGraph.js
 
-styles/
-  globals.css
+lib/thinkingAgent.js
 ```
 
 ## Environment
@@ -255,16 +203,31 @@ Create `.env.local`:
 OPENAI_API_KEY=your_key_here
 ```
 
-## Run
+The app can run without production authentication. Project data is currently stored locally in the browser.
+
+## Install
 
 ```bash
 npm install
+```
+
+## Run Locally
+
+Default Next.js port:
+
+```bash
 npm run dev
+```
+
+The current working browser session has usually been run on port `3001`:
+
+```bash
+npm run dev -- -p 3001
 ```
 
 Open:
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3001](http://localhost:3001)
 
 ## Build
 
@@ -279,47 +242,17 @@ npm run start
 npm run lint
 ```
 
-## Current State
+Note: the full lint command may still surface pre-existing hook dependency warnings in older components. Recent UI changes have been checked with targeted ESLint runs on the edited files.
 
-This repository is no longer just a visual idea-mapping prototype.
-It is now a project-based reasoning workspace with:
+## Current Status
 
-- authentication entry flow
-- project dashboard
-- project workspace routing
-- personal vs team canvas modes
-- reasoning mode system
-- AI-assisted node generation
-- candidate/share workflow
-- local activity log
-- premium graph-canvas UI refinements
+Thinking Machine is an active MVP prototype focused on:
 
-## Known Limitations
+- clean routing
+- local runnability
+- reasoning data model direction
+- graph interaction quality
+- compact information hierarchy
+- resolving reasoning gaps through interaction rather than passive labels
 
-- auth is localStorage-based mock auth
-- collaboration is simulated locally, not multi-user synced
-- GitHub/project persistence is not yet backed by a real database
-- some AI classifications still rely on heuristics after model output
-- activity is filtered to team-relevant local actions only
-
-## Near-Term Direction
-
-The next meaningful product improvements are likely to be:
-
-- stronger automatic orchestration of reasoning modes
-- richer relation semantics and layout intelligence
-- better AI suggestion diversity
-- real project persistence and multi-user collaboration
-- more precise node classification from conversation context
-
-## Repository Note
-
-This codebase currently reflects an active product transition from:
-
-- a 5W1H idea-mapping prototype
-
-to:
-
-- a conversational reasoning and collaborative structure-building system
-
-That transition is already visible in the architecture, node model, and workspace flow.
+The product direction is now less about drawing many categorized notes and more about helping a user see what needs to be clarified, evidenced, validated, or shared.

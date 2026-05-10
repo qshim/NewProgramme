@@ -66,6 +66,9 @@ export default function InputPanel({
   );
   const [onboardingExpired, setOnboardingExpired] = useState(false);
   const onboardingDismissedRef = useRef(false);
+  const shouldClearAfterAnalyzeRef = useRef(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [isOverlayExiting, setIsOverlayExiting] = useState(false);
 
   useEffect(() => {
     if (selectedNode || hasThinkingGraph || onboardingDismissedRef.current) {
@@ -80,6 +83,26 @@ export default function InputPanel({
     return () => window.clearTimeout(fadeTimer);
   }, [hasThinkingGraph, selectedNode]);
 
+  useEffect(() => {
+    if (isAnalyzing) {
+      setShowLoadingOverlay(true);
+      setIsOverlayExiting(false);
+      return;
+    }
+
+    if (!isAnalyzing && shouldClearAfterAnalyzeRef.current) {
+      setIsOverlayExiting(true);
+      const clearTimer = window.setTimeout(() => {
+        shouldClearAfterAnalyzeRef.current = false;
+        setShowLoadingOverlay(false);
+        setIsOverlayExiting(false);
+        setText("");
+      }, 220);
+
+      return () => window.clearTimeout(clearTimer);
+    }
+  }, [isAnalyzing]);
+
   const showOnboardingHint = !selectedNode && !hasThinkingGraph && !onboardingExpired;
   const activeTypePrompt = TYPE_PROMPT_COPY[preferredType] || placeholderText || "";
   const visibleSuggestedTypes = (Array.isArray(suggestedTypes) ? suggestedTypes : []).slice(0, 3);
@@ -87,12 +110,12 @@ export default function InputPanel({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!text.trim() || isAnalyzing) return;
+    shouldClearAfterAnalyzeRef.current = true;
     onSubmit?.({
       text,
       preferredType,
       selectedNode,
     });
-    setText("");
   };
 
   return (
@@ -101,7 +124,7 @@ export default function InputPanel({
       animate={{ opacity: 1, y: 0 }}
       className="pointer-events-none absolute inset-x-0 bottom-0 z-[85] flex justify-center px-4 pb-5"
     >
-      <div className="pointer-events-auto w-full max-w-3xl">
+      <div className="pointer-events-auto w-full max-w-[37rem]">
         <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
           {!selectedNode ? (
             showOnboardingHint ? (
@@ -113,7 +136,7 @@ export default function InputPanel({
           ) : null}
         </div>
 
-        <div className="rounded-[28px] border border-white/70 bg-white/84 p-3 shadow-[0_18px_42px_rgba(0,0,0,0.14)] backdrop-blur-[18px]">
+        <div className="rounded-[20px] border border-white/70 bg-white/84 px-3 py-2.5 shadow-[0_18px_42px_rgba(0,0,0,0.14)] backdrop-blur-[18px]">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               {String(stage || "research-diverge").replace("-", " / ")}
@@ -135,41 +158,63 @@ export default function InputPanel({
             </div>
           ) : null}
 
-          <form onSubmit={handleSubmit} className="flex items-end gap-2">
-            <div className="min-w-0 flex-1 rounded-[24px] border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm">
-              {selectedNode ? (
-                <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-slate-500">
-                  <CornerDownRight className="h-3.5 w-3.5" />
-                  {selectedNodePromptText || "Add a related thought to this node"}
+          <form onSubmit={handleSubmit} className="flex">
+            <div className="min-w-0 flex flex-1 items-end gap-2 rounded-[15px] border border-slate-200/80 bg-white/90 px-4 py-2.5 shadow-sm">
+              <div className="min-w-0 flex-1">
+                {selectedNode ? (
+                  <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                    <CornerDownRight className="h-3.5 w-3.5" />
+                    {selectedNodePromptText || "Add a related thought to this node"}
+                  </div>
+                ) : null}
+                <div className="relative">
+                  {showLoadingOverlay && text ? (
+                    <div
+                      className={`pointer-events-none absolute inset-0 whitespace-pre-wrap break-words pr-1 text-[15px] font-bold leading-[1.5] composer-loading-gradient-text transition-opacity duration-200 ${
+                        isOverlayExiting ? "opacity-0" : "opacity-100"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {text}
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSubmit(e);
+                      }
+                    }}
+                    placeholder={
+                      selectedNode
+                        ? TYPE_PLACEHOLDER_COPY[preferredType] || `Add a related ${preferredType ? preferredType.toLowerCase() : "thought"}...`
+                        : TYPE_PLACEHOLDER_COPY[preferredType] || placeholderText || "Add a thought..."
+                    }
+                    className={`w-full resize-none border-none bg-transparent text-[15px] outline-none min-h-[48px] max-h-[180px] ${
+                      showLoadingOverlay && text
+                        ? "text-transparent caret-transparent placeholder:text-transparent"
+                        : "text-slate-700 placeholder:text-slate-400"
+                    }`}
+                    disabled={isAnalyzing}
+                  />
                 </div>
-              ) : null}
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e);
-                  }
-                }}
-                placeholder={
-                  selectedNode
-                    ? TYPE_PLACEHOLDER_COPY[preferredType] || `Add a related ${preferredType ? preferredType.toLowerCase() : "thought"}...`
-                    : TYPE_PLACEHOLDER_COPY[preferredType] || placeholderText || "Add a thought..."
-                }
-                className="w-full resize-none border-none bg-transparent text-[15px] text-slate-700 outline-none placeholder:text-slate-400 min-h-[56px] max-h-[180px]"
-                disabled={isAnalyzing}
-              />
-            </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={!text.trim() || isAnalyzing}
-              className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-indigo-600 text-white shadow-lg transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Send thought"
-            >
-              {isAnalyzing ? <Sparkles className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-            </button>
+              <button
+                type="submit"
+                disabled={!text.trim() || isAnalyzing}
+                className="translate-x-[4.5px] inline-flex h-[31.06px] w-[30.49px] shrink-0 items-center justify-center rounded-[8.08px] bg-[linear-gradient(142.46deg,_#7FD1DB_13.82%,_#788DBC_66.77%,_#586789_119.72%)] text-white shadow-lg transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Send thought"
+              >
+                {isAnalyzing ? (
+                  <Sparkles className="h-[16.94px] w-[16.38px] animate-spin" strokeWidth={0.830635} />
+                ) : (
+                  <Send className="h-[16.94px] w-[16.38px]" strokeWidth={0.830635} />
+                )}
+              </button>
+            </div>
           </form>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/.venv
 /.pnp
 .pnp.*
 .yarn/*
@@ -23,6 +24,7 @@
 # misc
 .DS_Store
 *.pem
+/.data
 
 # debug
 npm-debug.log*
