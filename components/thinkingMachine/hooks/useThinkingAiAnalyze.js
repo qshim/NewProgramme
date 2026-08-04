@@ -4,11 +4,7 @@ import { toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
 import { getNodeSnapshot } from "@/components/thinkingMachine/utils/graphSnapshots";
 import { mergeSuggestionUnique } from "@/components/thinkingMachine/utils/suggestionUtils";
-import {
-  relayoutTopLevelThinkingNodes,
-  shiftClusterRelativeToAnchor,
-  shiftClusterRightOfExisting,
-} from "@/lib/thinkingMachine/graphMerge";
+import { placeIncomingNodesPreservingLayout } from "@/lib/thinkingMachine/graphMerge";
 import { normalizeRelationLabel, normalizeVisibility } from "@/lib/thinkingMachine/nodeMeta";
 
 export function useThinkingAiAnalyze({
@@ -79,13 +75,12 @@ export function useThinkingAiAnalyze({
 
         const suggestEdge = data.edges.find((e) => e.id.startsWith("e-suggest-"));
         const highlightedMainNodeId = suggestEdge ? suggestEdge.source : null;
+        const rawEdges = data.edges.filter((e) => !e.id.startsWith("e-suggest-"));
 
         const rawNewNodes = userNodeDatas.map((n) => toReactFlowNode(n, highlightedMainNodeId));
-        const enrichedNodes = inputContextNode
-          ? shiftClusterRelativeToAnchor(inputContextNode, rawNewNodes)
-          : nodes.length
-          ? shiftClusterRightOfExisting(nodes, rawNewNodes)
-          : rawNewNodes;
+        const enrichedNodes = placeIncomingNodesPreservingLayout(nodes, rawNewNodes, rawEdges, {
+          anchorNode: inputContextNode || null,
+        });
         const viewportTargets = inputContextNode ? [inputContextNode, ...enrichedNodes] : enrichedNodes;
 
         if (suggestionNodeData) {
@@ -113,7 +108,6 @@ export function useThinkingAiAnalyze({
           className: n.className || "",
         }));
         const mergedNodes = [...updatedExistingNodes, ...enrichedNodes];
-        const rawEdges = data.edges.filter((e) => !e.id.startsWith("e-suggest-"));
         const newReactFlowEdges = toConnectorEdges(
           rawEdges.map((e) => ({
             ...e,
@@ -123,19 +117,18 @@ export function useThinkingAiAnalyze({
           edges
         );
         const nextEdges = [...edges, ...newReactFlowEdges];
-        const relaidNodes = relayoutTopLevelThinkingNodes(mergedNodes, nextEdges);
         const insertedIds = new Set(enrichedNodes.map((node) => node.id));
-        const relaidViewportTargets = inputContextNode
-          ? relaidNodes.filter((node) => node.id === inputContextNode.id || insertedIds.has(node.id))
-          : relaidNodes.filter((node) => insertedIds.has(node.id));
+        const insertedViewportTargets = inputContextNode
+          ? mergedNodes.filter((node) => node.id === inputContextNode.id || insertedIds.has(node.id))
+          : mergedNodes.filter((node) => insertedIds.has(node.id));
 
-        setNodes(relaidNodes);
+        setNodes(mergedNodes);
         setEdges(nextEdges);
-        animateViewportToNodes(relaidViewportTargets.length ? relaidViewportTargets : viewportTargets);
+        animateViewportToNodes(insertedViewportTargets.length ? insertedViewportTargets : viewportTargets);
         setDrawerMode("tip");
         setIsDrawerOpen(true);
         userNodeDatas.forEach((node) => {
-          const targetNode = relaidNodes.find((item) => item.id === node.id);
+          const targetNode = mergedNodes.find((item) => item.id === node.id);
           const snapshot = getNodeSnapshot(targetNode, nextEdges);
           void recordProjectActivity("node_created", {
             nodeId: node.id,
@@ -190,4 +183,3 @@ export function useThinkingAiAnalyze({
 
   return { handleInputSubmit };
 }
-

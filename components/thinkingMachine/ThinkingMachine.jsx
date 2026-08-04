@@ -33,7 +33,7 @@ import {
     mergeMeetingMemory,
 } from "@/lib/thinkingMachine/meetingMemory";
 import { readCurrentUser } from "@/lib/thinkingMachine/clientUser";
-import { buildReasoningAlignmentAnalysis } from "@/lib/thinkingMachine/reasoningAlignment";
+import { buildReasoningAlignmentAnalysis, getAlignmentVisualMeta } from "@/lib/thinkingMachine/reasoningAlignment";
 import { buildTeamConflictAnalysis } from "@/lib/thinkingMachine/conflictAnalysis";
 import { explainConflict } from "@/lib/thinkingMachine/apiClient";
 import {
@@ -67,6 +67,43 @@ function readInitialUiLanguage() {
 
 function cubicOut(t) {
     return 1 - Math.pow(1 - t, 3);
+}
+
+function toNodeBrief(node) {
+    if (!node) return null;
+    return {
+        id: node.id,
+        title: node.data?.title || "Untitled node",
+        content: node.data?.content || "",
+        category: node.data?.category || "Idea",
+        phase: node.data?.phase,
+    };
+}
+
+function buildAlignmentStrategyContext({ relationship, sourceNode, targetNode }) {
+    const sourceBrief = toNodeBrief(sourceNode);
+    const targetBrief = toNodeBrief(targetNode);
+    const sourceTitle = sourceBrief?.title || "Source node";
+    const targetTitle = targetBrief?.title || "Target node";
+    const relationLabel = relationship?.relationLabel || "relationship";
+    const summary = relationship?.summary || `${sourceTitle} and ${targetTitle} still need clarification.`;
+
+    return {
+        id: `strategy-${relationship?.edgeId || relationship?.id || `${sourceBrief?.id}-${targetBrief?.id}`}`,
+        edgeId: relationship?.edgeId || relationship?.id || "",
+        status: "draft",
+        sourceNode: sourceBrief,
+        targetNode: targetBrief,
+        relationshipLabel: relationship?.displayLabel || "Unresolved difference",
+        diagnosis: summary,
+        strategy: `Align these nodes by adding one bridging clarification: what exact criterion, evidence, or definition would make "${sourceTitle}" usable for "${targetTitle}"?`,
+        steps: [
+            `Name the missing clarification between "${sourceTitle}" and "${targetTitle}".`,
+            `Add or update one note that states the shared criterion in plain language.`,
+            `Move the relationship to Partial alignment once both nodes share the same frame.`,
+        ],
+        refinePrompt: `Help me refine an alignment strategy for this unresolved relationship. Source: "${sourceTitle}". Target: "${targetTitle}". Current relation: "${relationLabel}". What is the smallest clarification, evidence, or definition that would move it toward partial alignment?`,
+    };
 }
 
 export default function ThinkingMachine({
@@ -112,6 +149,8 @@ export default function ThinkingMachine({
     const [openConflictNodeId, setOpenConflictNodeId] = useState(null);
     const [conflictExplainResultByNodeId, setConflictExplainResultByNodeId] = useState({});
     const [conflictExplainLoadingByNodeId, setConflictExplainLoadingByNodeId] = useState({});
+    const [selectedAlignmentStrategy, setSelectedAlignmentStrategy] = useState(null);
+    const [manualAlignmentByEdgeId, setManualAlignmentByEdgeId] = useState({});
     const previousConflictStateRef = useRef({});
 
     const { isAdminMode } = useAdminMode({
@@ -543,9 +582,76 @@ export default function ThinkingMachine({
         }),
         [edges, nodes]
     );
+    const handleConnectorAlignmentClick = useCallback((edgeId) => {
+        const relationship = reasoningAlignmentAnalysis?.relationships?.find((item) => item.edgeId === edgeId);
+        const edge = canvasEdges.find((item) => item.id === edgeId);
+        if (relationship && relationship.state !== "unresolved") return;
+        if (!relationship && !edge) return;
+
+        const fallbackRelationship = {
+            id: edgeId,
+            edgeId,
+            sourceId: edge?.source,
+            targetId: edge?.target,
+            state: "unresolved",
+            displayLabel: "Unresolved difference",
+            relationLabel: edge?.data?.label || edge?.label || "relationship",
+            summary: edge?.data?.alignmentReason || "",
+        };
+        const targetRelationship = relationship || fallbackRelationship;
+        const sourceNode = canvasNodes.find((node) => node.id === targetRelationship.sourceId);
+        const targetNode = canvasNodes.find((node) => node.id === targetRelationship.targetId);
+        const relatedNodes = [sourceNode, targetNode].filter(Boolean);
+        const relatedIds = relatedNodes.map((node) => node.id);
+
+        setSelectedAlignmentStrategy(buildAlignmentStrategyContext({
+            relationship: targetRelationship,
+            sourceNode,
+            targetNode,
+        }));
+        setActiveSuggestion(null);
+        resetChat?.();
+        setHighlightedNodeIds(new Set(relatedIds));
+        if (sourceNode?.id) {
+            setSelectedNodeId(sourceNode.id);
+        }
+        if (relatedNodes.length) {
+            animateViewportToNodes(relatedNodes);
+        }
+        setDrawerMode("chat");
+        setIsDrawerOpen(true);
+        setHasStartedInput(true);
+    }, [animateViewportToNodes, canvasEdges, canvasNodes, reasoningAlignmentAnalysis?.relationships, resetChat, setActiveSuggestion]);
+
     const decoratedCanvasEdges = useMemo(
-        () => decorateConnectorEdges(canvasEdges, reasoningAlignmentAnalysis),
-        [canvasEdges, reasoningAlignmentAnalysis]
+        () =>
+            decorateConnectorEdges(canvasEdges, reasoningAlignmentAnalysis).map((edge) => {
+                const manualAlignment = manualAlignmentByEdgeId[edge.id];
+                if (!manualAlignment) {
+                    return {
+                        ...edge,
+                        data: {
+                            ...(edge.data || {}),
+                            onAlignmentLabelClick: handleConnectorAlignmentClick,
+                        },
+                    };
+                }
+
+                const visualMeta = getAlignmentVisualMeta(manualAlignment.state);
+                return {
+                    ...edge,
+                    data: {
+                        ...(edge.data || {}),
+                        alignmentState: manualAlignment.state,
+                        alignmentLabel: manualAlignment.label || visualMeta.label,
+                        alignmentStroke: visualMeta.stroke,
+                        alignmentLabelBackground: visualMeta.labelBackground,
+                        alignmentLineDash: visualMeta.lineDash,
+                        onAlignmentLabelClick: handleConnectorAlignmentClick,
+                    },
+                };
+            }),
+        [canvasEdges, handleConnectorAlignmentClick, manualAlignmentByEdgeId, reasoningAlignmentAnalysis]
     );
     const alignmentSummary = reasoningAlignmentAnalysis?.selectedSummary || {
         counts: reasoningAlignmentAnalysis?.counts || {},
@@ -647,6 +753,7 @@ export default function ThinkingMachine({
     // 자동 attachedNodes suggestion 을 만든다.
     useEffect(() => {
         if (!selectedNode) return;
+        if (selectedAlignmentStrategy) return;
         // 사용자가 명시적으로 선택한 제안(activeSuggestion)이 있으면 건드리지 않는다.
         if (activeSuggestion && activeSuggestion._source !== "node-auto") return;
         if (activeSuggestion && activeSuggestion._source === "node-auto" && activeSuggestion.nodeId === selectedNode.id) {
@@ -680,7 +787,7 @@ export default function ThinkingMachine({
         }, 0);
 
         return () => window.clearTimeout(syncDrawerTimer);
-    }, [activeSuggestion, selectedNode, setActiveSuggestion, setDrawerMode, setIsDrawerOpen]);
+    }, [activeSuggestion, selectedAlignmentStrategy, selectedNode, setActiveSuggestion, setDrawerMode, setIsDrawerOpen]);
 
     const handlePromoteSelectedNode = useCallback(() => {
         if (!selectedNodeId || !selectedNode) return;
@@ -816,6 +923,55 @@ export default function ThinkingMachine({
         setIsDrawerOpen(true);
         setHasStartedInput(true);
     }, [animateViewportToNodes, nodes, setActiveSuggestion]);
+
+    const handleApplySelectedAlignmentStrategy = useCallback(() => {
+        if (!selectedAlignmentStrategy?.edgeId) return;
+        setManualAlignmentByEdgeId((prev) => ({
+            ...prev,
+            [selectedAlignmentStrategy.edgeId]: {
+                state: "partially_aligned",
+                label: "Partial alignment",
+            },
+        }));
+        setSelectedAlignmentStrategy((prev) => (
+            prev
+                ? {
+                    ...prev,
+                    status: "applied",
+                    relationshipLabel: "Partial alignment",
+                }
+                : prev
+        ));
+    }, [selectedAlignmentStrategy]);
+
+    const handleRefineSelectedAlignmentStrategy = useCallback(() => {
+        if (!selectedAlignmentStrategy) return;
+        const relatedIds = [
+            selectedAlignmentStrategy.sourceNode?.id,
+            selectedAlignmentStrategy.targetNode?.id,
+        ].filter(Boolean);
+        const relatedNodes = nodes.filter((node) => relatedIds.includes(node.id) && node?.type === "thinkingNode");
+        if (!relatedNodes.length) return;
+
+        const context = buildAttachedNodesContext(relatedNodes);
+        setActiveSuggestion({
+            ...context,
+            id: `alignment-refine-${selectedAlignmentStrategy.edgeId || context.id}`,
+            _source: "alignment-strategy",
+            title: "Resolve unresolved difference",
+            content: selectedAlignmentStrategy.diagnosis,
+            category: "Insight",
+            initialUserMessage: selectedAlignmentStrategy.refinePrompt,
+        });
+        setDrawerMode("chat");
+        setIsDrawerOpen(true);
+        setHasStartedInput(true);
+        setSelectedAlignmentStrategy((prev) => (prev ? { ...prev, status: "refining" } : prev));
+    }, [nodes, selectedAlignmentStrategy, setActiveSuggestion]);
+
+    const handleDismissSelectedAlignmentStrategy = useCallback(() => {
+        setSelectedAlignmentStrategy(null);
+    }, []);
 
     const {
         filteredTeamActivity,
@@ -1077,9 +1233,10 @@ export default function ThinkingMachine({
                             activeSuggestion={activeSuggestion}
                             selectedNode={selectedNode}
                             linkedNodes={selectedNodeLinkedNodes}
-                            candidateGraph={pendingCandidatePreview}
-                            alignmentSummary={alignmentSummary}
-                            currentUserRole={effectiveCurrentUserRole}
+	                            candidateGraph={pendingCandidatePreview}
+	                            alignmentSummary={alignmentSummary}
+	                            alignmentStrategy={selectedAlignmentStrategy}
+	                            currentUserRole={effectiveCurrentUserRole}
                             projectLastUpdated={projectLastUpdated}
                             activityLog={activityLog}
                             lastRefreshedAt={lastRefreshedAt}
@@ -1105,9 +1262,12 @@ export default function ThinkingMachine({
                             onPromoteSelectedNode={handlePromoteSelectedNode}
                             onDemoteSelectedNode={handleDemoteSelectedNode}
                             onSetNodeVisibility={handleSetNodeVisibility}
-                            onChatContextSelect={handleDrawerSuggestionSelect}
-                            onAlignmentSignalSelect={handleAlignmentSignalSelect}
-                            modeLabel={reasoningModeProfile.label}
+	                            onChatContextSelect={handleDrawerSuggestionSelect}
+	                            onAlignmentSignalSelect={handleAlignmentSignalSelect}
+	                            onApplyAlignmentStrategy={handleApplySelectedAlignmentStrategy}
+	                            onRefineAlignmentStrategy={handleRefineSelectedAlignmentStrategy}
+	                            onDismissAlignmentStrategy={handleDismissSelectedAlignmentStrategy}
+	                            modeLabel={reasoningModeProfile.label}
                             candidateHint={reasoningModeProfile.candidateHint}
                             selectedNodeQuickActions={reasoningModeProfile.selectedNodeActions}
                             uiLanguage={uiLanguage}

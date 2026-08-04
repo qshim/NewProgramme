@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useRouter } from "next/router";
 import Script from "next/script";
 import { motion } from "framer-motion";
-import { Eye, Lock, Mail, Sparkles } from "lucide-react";
+import { Eye, Lock, Mail } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const LOGIN_STORAGE_KEY = "isLoggedIn";
@@ -141,10 +141,6 @@ export default function Home() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="select-none text-center caret-transparent"
         >
-          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-white px-3.5 py-1 text-[10px] text-[#7BA592] shadow-[0_8px_24px_rgba(123,165,146,0.18)] backdrop-blur">
-            <Sparkles className="h-3.5 w-3.5 text-[#7BA592]" />
-            Visual node program
-          </div>
           <h1 className="mt-6 text-5xl font-light tracking-[-0.04em] text-[#628C79] sm:text-6xl">
             Thinking
             <br />

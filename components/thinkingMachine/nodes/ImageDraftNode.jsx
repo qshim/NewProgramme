@@ -19,7 +19,7 @@ export default function ImageDraftNode({ id, data, selected }) {
     <div
       className={`relative h-full w-full overflow-hidden rounded-[22px] border ${
         selected ? "border-teal-300 ring-2 ring-teal-200/70" : "border-white/70"
-      } bg-white/78 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-[10px]`}
+      } bg-white/78 shadow-[0_5px_12px_rgba(0,0,0,0.03)] backdrop-blur-[10px]`}
     >
       <div className="absolute right-2.5 top-2.5 z-10">
         <button

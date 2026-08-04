@@ -5,10 +5,7 @@ import { ingestMeetingChunk } from "@/lib/thinkingMachine/apiClient";
 import { mergeMeetingMemory } from "@/lib/thinkingMachine/meetingMemory";
 import { toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
-import {
-  relayoutTopLevelThinkingNodes,
-  shiftClusterRightOfExisting,
-} from "@/lib/thinkingMachine/graphMerge";
+import { placeIncomingNodesPreservingLayout } from "@/lib/thinkingMachine/graphMerge";
 import { normalizeVisibility } from "@/lib/thinkingMachine/nodeMeta";
 
 export function useMeetingCaptureFlow({
@@ -54,19 +51,18 @@ export function useMeetingCaptureFlow({
       },
     }));
     const rawNewNodes = normalizedIncoming.map((node) => toReactFlowNode(node, null));
-    const placedNodes = nodes.length ? shiftClusterRightOfExisting(nodes, rawNewNodes) : rawNewNodes;
-    const mergedNodes = [...nodes, ...placedNodes];
     const existingEdgeIds = new Set(edges.map((edge) => edge.id));
     const nextRawEdges = incomingEdges.filter((edge) => edge?.id && !existingEdgeIds.has(edge.id));
+    const placedNodes = placeIncomingNodesPreservingLayout(nodes, rawNewNodes, nextRawEdges);
+    const mergedNodes = [...nodes, ...placedNodes];
     const nextConnectorEdges = toConnectorEdges(nextRawEdges, mergedNodes, edges);
     const nextEdges = [...edges, ...nextConnectorEdges];
-    const relaidNodes = relayoutTopLevelThinkingNodes(mergedNodes, nextEdges);
 
-    setNodes(relaidNodes);
+    setNodes(mergedNodes);
     setEdges(nextEdges);
 
     return {
-      nextNodes: relaidNodes,
+      nextNodes: mergedNodes,
       nextEdges,
       createdNodeIds: placedNodes.map((node) => node.id),
     };

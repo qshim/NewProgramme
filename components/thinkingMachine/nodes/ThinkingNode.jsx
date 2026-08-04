@@ -41,14 +41,14 @@ function AnchorPort({ side }) {
 
   return (
     <span
-      className={`pointer-events-none absolute ${sideClass} top-[31px] z-[40] flex h-[14px] w-[14px] items-center justify-center rounded-full border border-white/55 bg-white/82 shadow-[0_4px_12px_rgba(15,23,42,0.08)] backdrop-blur-sm`}
+      className={`pointer-events-none absolute ${sideClass} top-[31px] z-[40] flex h-[14px] w-[14px] items-center justify-center rounded-full border border-white/55 bg-white/82 shadow-[0_4px_12px_rgba(15,23,42,0.04)] backdrop-blur-sm`}
       aria-hidden
     >
       <span
         className="absolute h-[8px] w-[8px] rounded-full bg-slate-200/70"
       />
       <span
-        className="relative h-[3px] w-[3px] rounded-full bg-slate-400/70 shadow-[0_0_0_1px_rgba(148,163,184,0.18)]"
+        className="relative h-[3px] w-[3px] rounded-full bg-slate-400/70 shadow-[0_0_0_1px_rgba(148,163,184,0.09)]"
       />
     </span>
   );
@@ -92,11 +92,11 @@ export default function ThinkingNode({ data = {} }) {
         onExplain={data.onExplainConflict}
       />
       <div className="flex h-full w-full flex-col">
-        <div className="relative w-full rounded-[18px] border border-white/60 bg-white/30 px-3 pt-4 pb-4 shadow-[0_14px_32px_rgba(15,23,42,0.14)] backdrop-blur-[18px]">
+        <div className="relative w-full rounded-[18px] border border-white/60 bg-white/30 px-3 pt-4 pb-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)] backdrop-blur-[18px]">
           <div className="mb-3 text-center text-[11px] font-semibold" style={{ color: "#194312" }}>
             {data.category}
           </div>
-          <div className="rounded-[16px] bg-white/96 px-3 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+          <div className="rounded-[16px] bg-white/96 px-3 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
             <div
               className="font-heading line-clamp-2 font-semibold tracking-[-0.02em]"
               style={{ color: "#759270", fontSize: 12, lineHeight: 1.2 }}

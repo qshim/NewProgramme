@@ -7,7 +7,7 @@
   --font-family-ui: "Instrument Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-family-heading: "Inter", "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-family-node-body: "Instrument Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --canvas-bg-base: #f2f7f7;
+  --canvas-bg-base: #fbfaf5;
   --canvas-stage-research-diverge: #4dd6f8;
   --canvas-stage-research-converge: #ffff86;
   --canvas-stage-ideation-diverge: #ff969f;
@@ -63,7 +63,10 @@ h6,
 .tm-canvas-bg {
   position: relative;
   overflow: hidden;
-  background: var(--canvas-bg-base);
+  background:
+    radial-gradient(900px 620px at 18% 12%, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0) 58%),
+    radial-gradient(780px 520px at 86% 88%, rgba(246, 241, 226, 0.42) 0%, rgba(255, 255, 255, 0) 64%),
+    linear-gradient(180deg, #ffffff 0%, var(--canvas-bg-base) 100%);
 }
 
 .tm-canvas-bg::before {
@@ -77,20 +80,20 @@ h6,
   z-index: 0;
   background-image: repeating-linear-gradient(
       to bottom,
-      rgba(255, 255, 255, 0.88) 0,
-      rgba(255, 255, 255, 0.88) 1px,
+      rgba(196, 202, 190, 0.16) 0,
+      rgba(196, 202, 190, 0.16) 1px,
       transparent 1px,
       transparent 14px
     ),
     repeating-linear-gradient(
       to right,
-      rgba(255, 255, 255, 0.88) 0,
-      rgba(255, 255, 255, 0.88) 1px,
+      rgba(196, 202, 190, 0.16) 0,
+      rgba(196, 202, 190, 0.16) 1px,
       transparent 1px,
       transparent 14px
     );
   background-position: 0 0, 16px 15px;
-  opacity: 0.7;
+  opacity: 0.58;
 }
 
 .tm-canvas-bg[data-stage="research-diverge"] {
@@ -120,6 +123,12 @@ h6,
   transition: filter 220ms ease, opacity 220ms ease;
 }
 
+.tm-canvas-flow .react-flow__node.dragging {
+  animation: none !important;
+  filter: none !important;
+  transition: none !important;
+}
+
 .tm-canvas-flow .react-flow__node.tm-node-shell,
 .tm-canvas-flow .react-flow__node-thinkingNode,
 .tm-canvas-flow .react-flow__node-ideaGroup,
@@ -133,7 +142,6 @@ h6,
 .tm-canvas-flow .react-flow__node-ideaGroup:hover,
 .tm-canvas-flow .react-flow__node-postitDraft:hover,
 .tm-canvas-flow .react-flow__node-imageDraft:hover {
-  transform: translateY(-1px);
   filter: saturate(1.02) brightness(1.01);
 }
 
@@ -145,6 +153,10 @@ h6,
   transition: opacity 160ms ease, filter 160ms ease;
 }
 
+.tm-canvas-flow:has(.react-flow__node.dragging) .react-flow__edge {
+  transition: none;
+}
+
 .tm-canvas-flow .react-flow__edge:hover {
   opacity: 0.94;
   filter: saturate(1.03);
@@ -153,18 +165,18 @@ h6,
 @keyframes selectedNodePulse {
   0%,
   100% {
-    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18), 0 12px 24px -18px rgba(56, 189, 248, 0.18);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.045), 0 6px 12px -9px rgba(56, 189, 248, 0.045);
   }
 
   50% {
-    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.34), 0 16px 28px -16px rgba(56, 189, 248, 0.28);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.085), 0 8px 14px -8px rgba(56, 189, 248, 0.07);
   }
 }
 
 .node-highlighted {
   border-radius: 22px;
   z-index: 10;
-  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.18), 0 8px 18px -16px rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.045), 0 4px 9px -8px rgba(245, 158, 11, 0.05);
 }
 
 .tm-canvas-flow .react-flow__node.selected.tm-node-shell,
@@ -172,7 +184,6 @@ h6,
 .tm-canvas-flow .react-flow__node.selected.react-flow__node-ideaGroup,
 .tm-canvas-flow .react-flow__node.selected.react-flow__node-postitDraft,
 .tm-canvas-flow .react-flow__node.selected.react-flow__node-imageDraft {
-  transform: translateY(-1px);
   filter: saturate(1.03);
   animation: selectedNodePulse 2.8s ease-in-out infinite;
   border-radius: 22px;
@@ -243,4 +254,3 @@ h6,
   background-clip: text;
   color: transparent;
 }
-

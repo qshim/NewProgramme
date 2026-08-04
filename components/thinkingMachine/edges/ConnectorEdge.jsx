@@ -1,6 +1,6 @@
 "use client";
 
-import { BaseEdge } from "reactflow";
+import { BaseEdge, EdgeLabelRenderer } from "reactflow";
 import { getAlignmentVisualMeta } from "@/lib/thinkingMachine/reasoningAlignment";
 
 const DEFAULT_LINE_COLOR = "#AAF17B";
@@ -272,6 +272,7 @@ export default function ConnectorEdge({
   const startPoint = points[0] ?? { x: sx, y: sy };
   const endPoint = points[points.length - 1] ?? { x: tx, y: ty };
   const alignmentLabel = typeof data?.alignmentLabel === "string" ? data.alignmentLabel : alignmentMeta.label;
+  const canResolveAlignment = (data?.alignmentState || "unresolved") === "unresolved";
   const labelX = Math.round(startPoint.x + 8);
   const labelY = Math.round(startPoint.y);
   const isSelected = Boolean(selected);
@@ -280,46 +281,56 @@ export default function ConnectorEdge({
   const primaryWidth = isSelected ? lineWidth + 0.2 : lineWidth;
 
   return (
-    <g className={`tm-connector-edge ${isSelected ? "is-selected" : ""}`}>
-      <BaseEdge
-        path={path}
-        style={{
-          stroke: underlayStroke,
-          strokeWidth: lineWidth + 2.2,
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-          opacity: isSelected ? 0.95 : 0.82,
-          filter: "none",
-          strokeDasharray: lineDash,
-        }}
-      />
-      <BaseEdge
-        id={id}
-        path={path}
-        style={{
-          stroke: primaryStroke,
-          strokeWidth: primaryWidth,
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-          opacity: isSelected ? 1 : 0.92,
-          filter: isSelected
-            ? "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.10))"
-            : "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.08))",
-          strokeDasharray: lineDash,
-        }}
-      />
+    <>
+      <g className={`tm-connector-edge ${isSelected ? "is-selected" : ""}`}>
+        <BaseEdge
+          path={path}
+          style={{
+            stroke: underlayStroke,
+            strokeWidth: lineWidth + 2.2,
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            opacity: isSelected ? 0.95 : 0.82,
+            filter: "none",
+            strokeDasharray: lineDash,
+          }}
+        />
+        <BaseEdge
+          id={id}
+          path={path}
+          style={{
+            stroke: primaryStroke,
+            strokeWidth: primaryWidth,
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            opacity: isSelected ? 1 : 0.92,
+            filter: isSelected
+              ? "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.10))"
+              : "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.08))",
+            strokeDasharray: lineDash,
+          }}
+        />
+      </g>
       {alignmentLabel ? (
-        <foreignObject
-          width={150}
-          height={24}
-          x={labelX}
-          y={labelY - 12}
-          className="pointer-events-none select-none"
-          requiredExtensions="http://www.w3.org/1999/xhtml"
-        >
-          <div className="flex h-full w-full select-none items-center justify-start">
-            <span
-              className="select-none whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-semibold tracking-[-0.01em] shadow-sm backdrop-blur-sm"
+        <EdgeLabelRenderer>
+          <div
+            className={`nodrag nopan absolute flex h-[30px] w-[190px] select-none items-center justify-start ${
+              canResolveAlignment ? "pointer-events-auto" : "pointer-events-none"
+            }`}
+            style={{
+              transform: `translate(0, -50%) translate(${labelX}px, ${labelY}px)`,
+            }}
+          >
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (canResolveAlignment) data?.onAlignmentLabelClick?.(id);
+              }}
+              className={`inline-flex h-6 select-none items-center whitespace-nowrap rounded-full border px-2.5 text-[9px] font-semibold tracking-[-0.01em] shadow-sm backdrop-blur-sm transition ${
+                canResolveAlignment ? "cursor-pointer hover:-translate-y-[1px] hover:shadow-[0_6px_14px_rgba(159,18,57,0.08)]" : "cursor-default"
+              }`}
               style={{
                 backgroundColor: alignmentMeta.labelBackground,
                 borderColor: alignmentMeta.labelBorder,
@@ -328,12 +339,14 @@ export default function ConnectorEdge({
                 WebkitUserSelect: "none",
                 userSelect: "none",
               }}
+              title={canResolveAlignment ? "Open alignment strategy" : alignmentLabel}
+              aria-label={canResolveAlignment ? `Open strategy for ${alignmentLabel}` : alignmentLabel}
             >
               {alignmentLabel}
-            </span>
+            </button>
           </div>
-        </foreignObject>
+        </EdgeLabelRenderer>
       ) : null}
-    </g>
+    </>
   );
 }

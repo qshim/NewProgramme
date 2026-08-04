@@ -12,7 +12,7 @@ export default function PostitDraftNode({ id, data, selected }) {
     <div
       className={`relative h-full w-full overflow-hidden rounded-[22px] border ${
         selected ? "border-teal-300 ring-2 ring-teal-200/70" : "border-white/70"
-      } bg-white/80 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-[10px]`}
+      } bg-white/80 shadow-[0_5px_12px_rgba(0,0,0,0.03)] backdrop-blur-[10px]`}
     >
       <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-r from-amber-100/70 to-lime-100/50" />
       <div className="relative flex h-full w-full flex-col gap-1.5 px-3 pb-3 pt-3">

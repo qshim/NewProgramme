@@ -12,6 +12,7 @@ import {
 import NodeDetailCard from "@/components/thinkingMachine/cards/NodeDetailCard";
 import CandidateGraphCard from "@/components/thinkingMachine/cards/CandidateGraphCard";
 import AlignmentSummaryCard from "@/components/thinkingMachine/cards/AlignmentSummaryCard";
+import AlignmentStrategyCard from "@/components/thinkingMachine/cards/AlignmentStrategyCard";
 import DrawerSuggestionCarousel from "@/components/thinkingMachine/drawer/DrawerSuggestionCarousel";
 import DrawerMeetingCaptureSection from "@/components/thinkingMachine/drawer/DrawerMeetingCaptureSection";
 import DrawerChatTranscript from "@/components/thinkingMachine/drawer/DrawerChatTranscript";
@@ -42,6 +43,7 @@ export default function RightAgentDrawer({
   linkedNodes,
   candidateGraph,
   alignmentSummary,
+  alignmentStrategy,
   currentUserRole = "owner",
   chatMessages,
   chatInput,
@@ -62,6 +64,9 @@ export default function RightAgentDrawer({
   onSetNodeVisibility,
   onChatContextSelect,
   onAlignmentSignalSelect,
+  onApplyAlignmentStrategy,
+  onRefineAlignmentStrategy,
+  onDismissAlignmentStrategy,
   modeLabel,
   candidateHint,
   selectedNodeQuickActions,
@@ -336,8 +341,14 @@ export default function RightAgentDrawer({
                     className="min-h-0 flex-1 overflow-y-auto px-1"
                     style={{ scrollbarWidth: "none" }}
                   >
-                    <div className="flex flex-col gap-3 pb-2">
-                      <NodeDetailCard
+	                    <div className="flex flex-col gap-3 pb-2">
+	                      <AlignmentStrategyCard
+	                        strategy={alignmentStrategy}
+	                        onApply={onApplyAlignmentStrategy}
+	                        onRefine={onRefineAlignmentStrategy}
+	                        onDismiss={onDismissAlignmentStrategy}
+	                      />
+	                      <NodeDetailCard
                         selectedNode={selectedNode}
                         linkedNodes={linkedNodes}
                         currentUserRole={currentUserRole}
@@ -484,7 +495,7 @@ export default function RightAgentDrawer({
                         type="button"
                         onClick={onChatConvertToNodes}
                         disabled={isChatConverting}
-                        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-indigo-500 to-purple-500 px-3 py-2.5 text-xs font-semibold text-white transition hover:from-indigo-600 hover:to-purple-600 disabled:opacity-55"
+                        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] border border-[#6F8A7B]/20 bg-[#7BA592] px-3 py-2.5 text-xs font-semibold text-white shadow-[0_6px_14px_rgba(61,107,79,0.10)] transition-colors hover:bg-[#6B907F] disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         {isChatConverting ? (
                           <>

@@ -90,7 +90,7 @@ export function useGhostDragToChat({
   const handleNodeDragUpdate = (event) => {
       const pt = getPointerClientPoint(event);
       const nearAttach = isPointInChatAttachZone(pt);
-      setIsChatDropActive(Boolean(nearAttach));
+      setIsChatDropActive((prev) => (prev === Boolean(nearAttach) ? prev : Boolean(nearAttach)));
 
       if (pt) {
         const start = dragStartPointRef.current;

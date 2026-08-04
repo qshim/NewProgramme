@@ -3,10 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
-import {
-  relayoutTopLevelThinkingNodes,
-  shiftClusterRightOfExisting,
-} from "@/lib/thinkingMachine/graphMerge";
+import { placeIncomingNodesPreservingLayout } from "@/lib/thinkingMachine/graphMerge";
 import { normalizeRelationLabel, normalizeVisibility } from "@/lib/thinkingMachine/nodeMeta";
 import {
   getNodeSnapshot,
@@ -42,17 +39,16 @@ export function useChatGraphIngest({
       },
     }));
     const rawNewNodes = normalizedIncoming.map((node) => toReactFlowNode(node, null));
-    const seededNodes = nodes.length ? shiftClusterRightOfExisting(nodes, rawNewNodes) : rawNewNodes;
+    const seededNodes = placeIncomingNodesPreservingLayout(nodes, rawNewNodes, incomingEdges);
     const mergedNodes = [...nodes, ...seededNodes];
     const nextEdges = [...edges, ...toConnectorEdges(incomingEdges, mergedNodes, edges)];
-    const relaidNodes = relayoutTopLevelThinkingNodes(mergedNodes, nextEdges);
     const insertedIds = new Set(seededNodes.map((node) => node.id));
 
-    setNodes(relaidNodes);
+    setNodes(mergedNodes);
     setEdges(nextEdges);
-    animateViewportToNodes(relaidNodes.filter((node) => insertedIds.has(node.id)));
+    animateViewportToNodes(mergedNodes.filter((node) => insertedIds.has(node.id)));
     normalizedIncoming.forEach((node) => {
-      const targetNode = relaidNodes.find((item) => item.id === node.id);
+      const targetNode = mergedNodes.find((item) => item.id === node.id);
       const relatedNodeIds = getRelatedNodeIds(node.id, nextEdges);
       void recordProjectActivity("node_created", {
         nodeId: node.id,

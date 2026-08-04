@@ -8,7 +8,6 @@ import {
 } from "@/lib/thinkingMachine/apiClient";
 import { readCurrentUser } from "@/lib/thinkingMachine/clientUser";
 
-const LOGIN_STORAGE_KEY = "isLoggedIn";
 const DotGrid = dynamic(() => import("@/components/DotGrid/DotGrid"), { ssr: false });
 
 function formatDate(value) {
@@ -41,13 +40,6 @@ export default function ProjectsPage() {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    const isLoggedIn = typeof window !== "undefined" && window.localStorage.getItem(LOGIN_STORAGE_KEY) === "true";
-
-    if (!isLoggedIn) {
-      void router.replace("/");
-      return;
-    }
-
     const run = async () => {
       try {
         const nextCurrentUser = readCurrentUser();
@@ -74,14 +66,16 @@ export default function ProjectsPage() {
     if (!currentUser?.id) return;
     const trimmedQuery = searchQuery.trim();
     if (!trimmedQuery) {
-      setSearchResults([]);
-      setIsSearchLoading(false);
-      return;
+      const resetTimer = window.setTimeout(() => {
+        setSearchResults([]);
+        setIsSearchLoading(false);
+      }, 0);
+      return () => window.clearTimeout(resetTimer);
     }
 
     let cancelled = false;
-    setIsSearchLoading(true);
     const timeoutId = window.setTimeout(async () => {
+      setIsSearchLoading(true);
       try {
         const nextResults = await fetchProjects({
           currentUserId: currentUser.id,
