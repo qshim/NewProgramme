@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { summarizeTeamContext } from "@/lib/thinkingMachine/apiClient";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
 export function useTeamContextSummary({
   activityLog,
@@ -18,7 +19,10 @@ export function useTeamContextSummary({
   normalizedStage,
   projectId,
   projectTitle,
+  uiLanguage = "en",
+  modelProfile = "auto",
 }) {
+  const copy = getWorkspaceCopy(uiLanguage).errors;
   const filteredTeamActivity = useMemo(() => {
     const items = Array.isArray(activityLog) ? activityLog : [];
     if (!selectedTeamMemberId) return items;
@@ -84,6 +88,8 @@ export function useTeamContextSummary({
         activityEvents: eventScope,
         relatedNodes,
         stage: normalizedStage,
+        uiLanguage,
+        modelProfile,
       });
       setTeamContextSummary(result);
       if (Array.isArray(result?.keyNodeIds) && result.keyNodeIds.length) {
@@ -93,7 +99,7 @@ export function useTeamContextSummary({
       setTeamContextError(
         error?.response?.data?.error ||
         error?.message ||
-        "Failed to summarize the team context."
+        copy.teamContext
       );
     } finally {
       setIsTeamContextLoading(false);
@@ -103,6 +109,8 @@ export function useTeamContextSummary({
     focusNodesByIds,
     nodes,
     normalizedStage,
+    modelProfile,
+    copy.teamContext,
     projectId,
     projectTitle,
     selectedActivityItem,
@@ -111,6 +119,7 @@ export function useTeamContextSummary({
     setTeamContextError,
     setTeamContextSummary,
     teamMembers,
+    uiLanguage,
   ]);
 
   return {

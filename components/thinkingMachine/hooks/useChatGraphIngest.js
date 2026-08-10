@@ -88,28 +88,23 @@ export function useChatGraphIngest({
     const incomingEdges = Array.isArray(data?.edges) ? data.edges : [];
     if (!incoming.length) return;
 
-    handleAddNodesFromChat(
-      {
-        nodes: incoming.map((node) => ({
-          ...node,
-          data: {
-            ...node.data,
-            ownerId: currentUserId,
-            editedBy: currentUserName,
-            visibility: "candidate",
-          },
-        })),
-        edges: incomingEdges.map((edge) => ({
-          ...edge,
-          label: normalizeRelationLabel(edge?.label),
-        })),
-      },
-      { commitVisibility: "candidate" }
-    );
-
-    setActiveSuggestion(null);
-    setPendingChatCandidateGraph(null);
-  }, [currentUserId, currentUserName, handleAddNodesFromChat, setActiveSuggestion, setPendingChatCandidateGraph]);
+    setPendingChatCandidateGraph({
+      ...data,
+      nodes: incoming.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          ownerId: currentUserId,
+          editedBy: currentUserName,
+          visibility: "candidate",
+        },
+      })),
+      edges: incomingEdges.map((edge) => ({
+        ...edge,
+        label: normalizeRelationLabel(edge?.label),
+      })),
+    });
+  }, [currentUserId, currentUserName, setPendingChatCandidateGraph]);
 
   const handleCommitCandidateNodes = useCallback(() => {
     if (!pendingChatCandidateGraph) return;

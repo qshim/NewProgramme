@@ -1,14 +1,4 @@
-import { createThinkingAgent } from "../../lib/thinkingAgent";
-import { getServerEnv } from "../../lib/serverEnv";
-
-let cachedAgent = null;
-
-function getAgent() {
-  const apiKey = getServerEnv("OPENAI_API_KEY");
-  if (!apiKey) return { error: "OpenAI API Key is missing on server." };
-  if (!cachedAgent) cachedAgent = createThinkingAgent({ apiKey });
-  return { agent: cachedAgent };
-}
+import { getThinkingAgent } from "@/lib/ai/thinkingAgentFactory";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,11 +6,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { agent, error } = getAgent();
+  const { agent, error } = getThinkingAgent(req.body?.modelProfile);
   if (error) return res.status(500).json({ error });
 
   try {
-    const { text, history, stage } = req.body ?? {};
+    const { text, history, stage, uiLanguage } = req.body ?? {};
     if (typeof text !== "string" || !text.trim()) {
       return res.status(400).json({ error: "Missing required field: text" });
     }
@@ -29,6 +19,7 @@ export default async function handler(req, res) {
       text,
       history: Array.isArray(history) ? history : [],
       stage,
+      uiLanguage: ["en", "ko", "ja"].includes(uiLanguage) ? uiLanguage : "en",
     });
 
     return res.status(200).json(result);
@@ -41,4 +32,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: msg });
   }
 }
-

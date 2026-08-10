@@ -7,10 +7,13 @@ import { toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
 import { placeIncomingNodesPreservingLayout } from "@/lib/thinkingMachine/graphMerge";
 import { normalizeVisibility } from "@/lib/thinkingMachine/nodeMeta";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
 export function useMeetingCaptureFlow({
   projectId,
   projectTitle,
+  uiLanguage = "en",
+  modelProfile = "auto",
   nodes,
   edges,
   currentUserId,
@@ -30,6 +33,7 @@ export function useMeetingCaptureFlow({
   animateViewportToNodes,
   recordProjectActivity,
 }) {
+  const copy = getWorkspaceCopy(uiLanguage).errors;
   const applyMeetingGraphPatch = useCallback((graphPatch = {}) => {
     const incomingNodes = Array.isArray(graphPatch?.nodes) ? graphPatch.nodes : [];
     const incomingEdges = Array.isArray(graphPatch?.edges) ? graphPatch.edges : [];
@@ -111,6 +115,8 @@ export function useMeetingCaptureFlow({
           },
         },
         stage: normalizedStage,
+        uiLanguage,
+        modelProfile,
       });
 
       const mergeResult = applyMeetingGraphPatch(result?.graphPatch || {});
@@ -142,7 +148,7 @@ export function useMeetingCaptureFlow({
       setTeamContextError(
         error?.response?.data?.error ||
         error?.message ||
-        "Failed to ingest the meeting chunk."
+        copy.meeting
       );
     } finally {
       setIsMeetingCaptureLoading(false);
@@ -151,6 +157,7 @@ export function useMeetingCaptureFlow({
     animateViewportToNodes,
     applyMeetingGraphPatch,
     currentUserName,
+    copy.meeting,
     meetingMemory,
     meetingMemoryReadout.activeIssues,
     meetingMemoryReadout.currentDirection,
@@ -159,6 +166,7 @@ export function useMeetingCaptureFlow({
     meetingMemoryReadout.repeatedIssues,
     meetingMemoryReadout.unresolvedAreas,
     meetingMemoryReadout.unresolvedQuestions,
+    modelProfile,
     meetingSessionIdRef,
     nodes,
     normalizedStage,
@@ -171,6 +179,7 @@ export function useMeetingCaptureFlow({
     setMeetingCaptureSummary,
     setMeetingMemory,
     setTeamContextError,
+    uiLanguage,
   ]);
 
   return {

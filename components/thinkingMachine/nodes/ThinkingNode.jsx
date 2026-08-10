@@ -83,13 +83,14 @@ export default function ThinkingNode({ data = {} }) {
       <ConflictPopover
         nodeId={data.nodeId}
         state={data.conflictState}
-        summary={data.conflictSummary}
+        summary={data.localizedConflictSummary || data.conflictSummary}
         linkedNodeTitles={data.conflictLinkedNodeTitles}
         explanation={data.conflictExplanation}
         isOpen={Boolean(data.isConflictPopoverOpen)}
         isLoading={Boolean(data.isConflictExplainLoading)}
         onToggle={data.onToggleConflictPopover}
         onExplain={data.onExplainConflict}
+        uiLanguage={data.uiLanguage}
       />
       <div className="flex h-full w-full flex-col">
         <div className="relative w-full rounded-[18px] border border-white/60 bg-white/30 px-3 pt-4 pb-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)] backdrop-blur-[18px]">
@@ -101,13 +102,13 @@ export default function ThinkingNode({ data = {} }) {
               className="font-heading line-clamp-2 font-semibold tracking-[-0.02em]"
               style={{ color: "#759270", fontSize: 12, lineHeight: 1.2 }}
             >
-              {data.title || "Untitled node"}
+              {data.localizedTitle || data.title || "Untitled node"}
             </div>
             <div
               className="mt-1 font-node-body line-clamp-3 text-[#667085]"
               style={{ fontSize: 11, lineHeight: 1.34 }}
             >
-              {data.content}
+              {data.localizedContent || data.content}
             </div>
             {isActionStateVisible ? (
               <div className="mt-2.5 flex flex-wrap gap-1.5">

@@ -87,6 +87,20 @@ It includes:
 
 Core product terms remain in English, including `Workspace`, `Meeting`, `Personal`, `Team`, node categories, and relationship states.
 
+### Concept Studio
+
+`Concept` mode turns a design dialogue into structured alternatives instead of a long AI answer.
+
+- proposes three meaningfully distinct concept territories during exploration
+- preserves direction names and rationale across follow-up turns
+- supports develop, compare, merge, and stress-test conversations
+- separates promise, rationale, principles, experience cues, trade-offs, and evidence needs
+- previews `Goal`, `Option`, and `OpenQuestion` branches on the canvas
+- requires `Add`, `Keep Private`, or `Discard` before changing the saved graph
+- preserves existing canvas positions while placing only the incoming draft cluster
+
+The implementation and design rationale are documented in [Concept Studio](docs/concept-studio.md).
+
 ### Reasoning Alignment
 
 The alignment section summarizes relationship health in the visible graph.
@@ -171,11 +185,13 @@ pages/
     analyze.js
     chat.js
     chat-to-nodes.js
+    concept-studio.js
 
 components/thinkingMachine/
   ThinkingMachine.jsx
   NodeMap.jsx
   RightAgentDrawer.jsx
+  ConceptStudioPanel.jsx
   LeftTeamContextPanel.jsx
   cards/
   drawer/

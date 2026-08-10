@@ -7,6 +7,7 @@ import {
   getVisibilityMeta,
   normalizeNodeData,
 } from "@/lib/thinkingMachine/nodeMeta";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
 function CompactPill({ children, className = "bg-slate-100 text-slate-600" }) {
   return (
@@ -25,10 +26,12 @@ export default function NodeDetailCard({
   onShare,
   quickActions = [],
   onClearSelection,
+  uiLanguage = "en",
 }) {
   if (!selectedNode) return null;
 
   const data = normalizeNodeData(selectedNode.data || {});
+  const copy = getWorkspaceCopy(uiLanguage).nodeDetail;
   const linked = Array.isArray(linkedNodes) ? linkedNodes : [];
   const canEdit = currentUserRole === "owner" || currentUserRole === "editor";
   const actionStateMeta = getActionStateMeta({
@@ -39,7 +42,7 @@ export default function NodeDetailCard({
   const questionFocusLabel = getQuestionFocusLabel(data);
   const canDemote = canEdit && getPreviousVisibility(data.visibility) !== data.visibility;
   const canShare = canEdit && !["shared", "reviewed", "agreed"].includes(data.visibility);
-  const primaryActionLabel = canShare ? "Share" : canDemote ? "Demote" : "Shared";
+  const primaryActionLabel = canShare ? copy.share : canDemote ? copy.demote : copy.shared;
   const primaryActionHandler = canShare ? onShare : onDemote;
   const topQuickActions = quickActions.slice(0, 3);
 
@@ -49,7 +52,7 @@ export default function NodeDetailCard({
         <div className="min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{data.category}</div>
           <h2 className="mt-1 line-clamp-2 font-heading text-[15px] font-semibold leading-tight text-slate-800">
-            {selectedNode.data?.title || "Untitled node"}
+            {selectedNode.data?.localizedTitle || selectedNode.data?.title || copy.untitled}
           </h2>
         </div>
         {onClearSelection ? (
@@ -57,7 +60,7 @@ export default function NodeDetailCard({
             type="button"
             onClick={onClearSelection}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white/82 text-[12px] font-bold text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-700"
-            aria-label="Clear selected node"
+            aria-label={copy.clear}
           >
             x
           </button>
@@ -65,15 +68,15 @@ export default function NodeDetailCard({
       </div>
 
       <p className="mt-2 rounded-xl bg-slate-50/80 px-2.5 py-2 text-[12px] font-semibold leading-relaxed text-slate-700">
-        {selectedNode.data?.content && selectedNode.data.content.trim().length > 0
-          ? selectedNode.data.content
-          : "Add one clear sentence that captures what this node is about."}
+        {(selectedNode.data?.localizedContent || selectedNode.data?.content)?.trim().length > 0
+          ? selectedNode.data?.localizedContent || selectedNode.data?.content
+            : copy.empty}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <CompactPill className={actionStateMeta.className}>{actionStateMeta.label}</CompactPill>
         <CompactPill>{visibilityMeta.label}</CompactPill>
-        <span className="text-[11px] font-semibold text-slate-400">Focus: {questionFocusLabel}</span>
+        <span className="text-[11px] font-semibold text-slate-400">{copy.focus}: {questionFocusLabel}</span>
       </div>
 
       <div className="mt-3 flex items-center gap-2">
@@ -91,13 +94,13 @@ export default function NodeDetailCard({
           disabled={!canEdit}
           className="inline-flex h-8 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Promote
+          {copy.promote}
         </button>
       </div>
 
       {topQuickActions.length ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] font-semibold text-slate-400">Add:</span>
+          <span className="text-[11px] font-semibold text-slate-400">{copy.add}:</span>
           {topQuickActions.map((item) => (
             <button
               key={item}
@@ -111,8 +114,12 @@ export default function NodeDetailCard({
       ) : null}
 
       <div className="mt-3 border-t border-slate-200/70 pt-2 text-[11px] font-semibold text-slate-400">
-        {linked.length ? `${linked.length} linked node${linked.length === 1 ? "" : "s"}` : "No linked nodes yet"}
-        {linked[0]?.title ? <span className="text-slate-500"> · {linked[0].title}</span> : null}
+        {linked.length
+          ? `${linked.length} ${linked.length === 1 ? copy.linkedNode : copy.linkedNodes}`
+          : copy.noLinks}
+        {linked[0]?.title ? (
+          <span className="text-slate-500"> · {linked[0].localizedTitle || linked[0].title}</span>
+        ) : null}
       </div>
     </div>
   );

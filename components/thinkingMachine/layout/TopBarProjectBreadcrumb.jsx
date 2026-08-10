@@ -18,6 +18,7 @@ export default function TopBarProjectBreadcrumb({
   setDraftTitle,
   setIsEditingTitle,
   commitTitle,
+  uiCopy = {},
 }) {
   return (
     <div className="pointer-events-auto flex max-w-[calc(100vw-48px)] justify-self-start pt-0.5">
@@ -55,7 +56,7 @@ export default function TopBarProjectBreadcrumb({
               autoFocus
               className="w-full border-none bg-transparent px-0 py-0 text-[14px] font-medium text-slate-800 outline-none shadow-none"
               style={TOPBAR_CENTER_TEXT_STYLE}
-              aria-label="Project title"
+              aria-label={uiCopy.projectTitle || "Project title"}
               transition={{ layout: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } }}
             />
           ) : (
@@ -65,8 +66,8 @@ export default function TopBarProjectBreadcrumb({
               onClick={() => setIsEditingTitle(true)}
               className="max-w-full break-words text-left text-[14px] font-medium text-slate-700/88 transition hover:text-slate-900"
               style={TOPBAR_CENTER_TEXT_STYLE}
-              aria-label="Edit project title"
-              title="Rename project"
+              aria-label={uiCopy.editProjectTitle || "Edit project title"}
+              title={uiCopy.renameProject || "Rename project"}
               transition={{ layout: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } }}
             >
               {projectTitle || "Untitled Project"}

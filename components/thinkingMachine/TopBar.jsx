@@ -1,20 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import TopBarProjectBreadcrumb from "@/components/thinkingMachine/layout/TopBarProjectBreadcrumb";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
 export default function TopBar({
   projectTitle = "Thinking Machine",
   onProjectTitleChange,
   projectMetaHref = "/projects",
   projectMetaLabel = "Project workspace",
+  uiLanguage = "en",
 }) {
+  const copy = getWorkspaceCopy(uiLanguage).topBar;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(projectTitle);
-
-  useEffect(() => {
-    setDraftTitle(projectTitle);
-  }, [projectTitle]);
 
   const commitTitle = () => {
     const nextTitle = draftTitle.trim() || "Untitled Project";
@@ -33,8 +32,12 @@ export default function TopBar({
           projectTitle={projectTitle}
           draftTitle={draftTitle}
           setDraftTitle={setDraftTitle}
-          setIsEditingTitle={setIsEditingTitle}
+          setIsEditingTitle={(nextEditing) => {
+            if (nextEditing) setDraftTitle(projectTitle);
+            setIsEditingTitle(nextEditing);
+          }}
           commitTitle={commitTitle}
+          uiCopy={copy}
         />
       </div>
     </header>

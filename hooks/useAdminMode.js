@@ -40,6 +40,11 @@ export function useAdminMode({
     }
   }, [hintDismissedKey]);
 
+  const toggleAdminMode = useCallback(() => {
+    setIsAdminMode((prev) => !prev);
+    dismissAdminShortcutHint();
+  }, [dismissAdminShortcutHint]);
+
   useEffect(() => {
     if (!hasLoadedFromStorageRef.current) return;
     try {
@@ -56,18 +61,18 @@ export function useAdminMode({
       if (!isAdminToggle) return;
 
       event.preventDefault();
-      setIsAdminMode((prev) => !prev);
-      dismissAdminShortcutHint();
+      toggleAdminMode();
     };
 
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [dismissAdminShortcutHint]);
+  }, [toggleAdminMode]);
 
   return {
     isAdminMode,
+    setIsAdminMode,
+    toggleAdminMode,
     showAdminShortcutHint,
     dismissAdminShortcutHint,
   };
 }
-

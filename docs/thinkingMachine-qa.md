@@ -69,10 +69,10 @@
   - 채팅 인풋에 텍스트 입력 후 Enter 또는 전송 버튼 클릭 시 `onChatSubmit`이 호출되며, 사용자가 입력한 텍스트가 로딩 오버레이와 메시지 리스트에 순서대로 나타나는지 확인.
   - `isChatLoading`이 true일 때 전송 버튼이 비활성화되고, 로딩 인디케이터가 표시되는지 확인.
   - 메시지 리스트가 길어질 경우 자동으로 하단(`chatBottomRef`)으로 스크롤되는지 확인.
-  - `isChatConverting`이 true일 때 \"Convert to node candidates\" 버튼이 비활성화되고 로딩 상태 텍스트가 표시되는지 확인.
-  - `chatMessages.length >= 2`이고 active suggestion이 있을 때만 \"Convert to node candidates\" 버튼이 나타나는지 확인.
+  - AI 응답이 완료되면 별도 버튼 없이 `/api/chat-to-nodes`가 자동 호출되고 후보 노드 카드가 나타나는지 확인.
+  - `isChatConverting`이 true일 때 채팅 로딩 인디케이터가 노드 생성 상태를 표시하는지 확인.
+  - 자동 후보 생성에 실패하면 채팅 안에 오류가 표시되고 기존 대화는 유지되는지 확인.
 
 - **드롭존 및 드래그 인터랙션**
   - 컨텍스트 노드를 오른쪽으로 드래그하여 드롭존에 가져가면 드로어 테두리가 강조(ring)되는지 확인.
   - 드롭 시 해당 노드가 채팅 컨텍스트로 정상 첨부되고, 이후 대화 흐름에서 참고되는지 확인(있다면).
-

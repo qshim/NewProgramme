@@ -1,14 +1,4 @@
-import { createThinkingAgent } from "@/lib/thinkingAgent";
-import { getServerEnv } from "@/lib/serverEnv";
-
-let cachedAgent = null;
-
-function getAgent() {
-  const apiKey = getServerEnv("OPENAI_API_KEY");
-  if (!apiKey) return { error: "OpenAI API Key is missing on server." };
-  if (!cachedAgent) cachedAgent = createThinkingAgent({ apiKey });
-  return { agent: cachedAgent };
-}
+import { getThinkingAgent } from "@/lib/ai/thinkingAgentFactory";
 
 export default async function handler(req, res) {
   const projectId = Array.isArray(req.query?.id) ? req.query.id[0] : req.query?.id;
@@ -19,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { agent, error } = getAgent();
+  const { agent, error } = getThinkingAgent(req.body?.modelProfile);
   if (error) return res.status(500).json({ error });
 
   try {
@@ -32,6 +22,7 @@ export default async function handler(req, res) {
       existing_nodes: req.body?.existing_nodes,
       meeting_memory: req.body?.meeting_memory,
       stage: req.body?.stage,
+      uiLanguage: ["en", "ko", "ja"].includes(req.body?.uiLanguage) ? req.body.uiLanguage : "en",
     });
     return res.status(200).json(result);
   } catch (e) {

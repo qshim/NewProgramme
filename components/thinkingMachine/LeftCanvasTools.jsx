@@ -21,6 +21,15 @@ const COPY = {
     lock: "잠금",
     unlock: "잠금 해제",
   },
+  ja: {
+    label: "キャンバスツール",
+    view: "表示",
+    zoomIn: "拡大",
+    zoomOut: "縮小",
+    fit: "全体表示",
+    lock: "ロック",
+    unlock: "ロック解除",
+  },
 };
 
 function IconButton({ onClick, label, children, active = false }) {

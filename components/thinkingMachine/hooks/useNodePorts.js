@@ -15,6 +15,7 @@ export function useNodePorts({
   conflictExplainLoadingByNodeId,
   onToggleConflictPopover,
   onExplainConflict,
+  uiLanguage = "en",
 }) {
   const portVisibilityByNode = useMemo(() => {
     const map = new Map();
@@ -94,6 +95,7 @@ export function useNodePorts({
               isConflictExplainLoading: Boolean(conflictExplainLoadingByNodeId?.[n.id]),
               onToggleConflictPopover,
               onExplainConflict,
+              uiLanguage,
             }
           : {}),
       },
@@ -114,6 +116,7 @@ export function useNodePorts({
     onToggleConflictPopover,
     openConflictNodeId,
     portVisibilityByNode,
+    uiLanguage,
   ]);
 
   return { displayNodes };

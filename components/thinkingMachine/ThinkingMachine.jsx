@@ -11,11 +11,13 @@ import NodeMap from "./NodeMap";
 import LeftTeamContextPanel from "./LeftTeamContextPanel";
 import RightAgentDrawer from "./RightAgentDrawer";
 import TopBar from "./TopBar";
+import WorkspaceStarter from "./WorkspaceStarter";
+import AdminOverviewPanel from "./AdminOverviewPanel";
 import { getNodeSnapshot, getRelatedNodeIds } from "@/components/thinkingMachine/utils/graphSnapshots";
 import { buildAttachedNodesContext } from "@/components/thinkingMachine/utils/chatDropGeometry";
 import { decorateConnectorEdges, toConnectorEdges } from "@/lib/thinkingMachine/connectorEdges";
 import { toReactFlowNode } from "@/lib/thinkingMachine/reactflowTransforms";
-import { computeNodeBounds, relayoutTopLevelThinkingNodes, shiftClusterRightOfExisting } from "@/lib/thinkingMachine/graphMerge";
+import { computeNodeBounds, placeIncomingNodesPreservingLayout, relayoutTopLevelThinkingNodes, shiftClusterRightOfExisting } from "@/lib/thinkingMachine/graphMerge";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useDraftGrouping } from "@/components/thinkingMachine/hooks/useDraftGrouping";
 import { useGhostDragToChat } from "@/components/thinkingMachine/hooks/useGhostDragToChat";
@@ -27,6 +29,8 @@ import { useProjectGraphSync } from "@/components/thinkingMachine/hooks/useProje
 import { useChatGraphIngest } from "@/components/thinkingMachine/hooks/useChatGraphIngest";
 import { useMeetingCaptureFlow } from "@/components/thinkingMachine/hooks/useMeetingCaptureFlow";
 import { useTeamContextSummary } from "@/components/thinkingMachine/hooks/useTeamContextSummary";
+import { useWorkspaceTranslations } from "@/components/thinkingMachine/hooks/useWorkspaceTranslations";
+import { useConceptStudio } from "@/components/thinkingMachine/hooks/useConceptStudio";
 import {
     buildMeetingMemoryReadout,
     getDefaultMeetingMemory,
@@ -35,10 +39,11 @@ import {
 import { readCurrentUser } from "@/lib/thinkingMachine/clientUser";
 import { buildReasoningAlignmentAnalysis, getAlignmentVisualMeta } from "@/lib/thinkingMachine/reasoningAlignment";
 import { buildTeamConflictAnalysis } from "@/lib/thinkingMachine/conflictAnalysis";
-import { explainConflict } from "@/lib/thinkingMachine/apiClient";
+import { explainConflict, summarizeTeamContext } from "@/lib/thinkingMachine/apiClient";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
+import { normalizeAiModelProfile } from "@/lib/ai/modelRegistry";
 import {
     getReasoningModeProfile,
-    getRoleMeta,
     getNextVisibility,
     getPreviousVisibility,
     normalizeLayerOrigin,
@@ -52,6 +57,7 @@ const INITIAL_EDGES = [];
 const ADMIN_MODE_STORAGE_KEY = "vtm-admin-mode-enabled";
 const ADMIN_HINT_DISMISSED_KEY = "vtm-admin-shortcut-hint-dismissed";
 const UI_LANGUAGE_STORAGE_KEY = "thinkingMachineUiLanguage";
+const AI_MODEL_PROFILE_STORAGE_KEY = "thinkingMachineAiModelProfile";
 const MOCK_CURRENT_USER_ID = "mock-user-1";
 const MOCK_CURRENT_USER_ROLE = "owner";
 const AUTO_FIT_MAX_ZOOM = 1;
@@ -59,9 +65,19 @@ const AUTO_FIT_MAX_ZOOM = 1;
 function readInitialUiLanguage() {
     if (typeof window === "undefined") return "en";
     try {
-        return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) === "ko" ? "ko" : "en";
+        const storedLanguage = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+        return ["en", "ko", "ja"].includes(storedLanguage) ? storedLanguage : "en";
     } catch {
         return "en";
+    }
+}
+
+function readInitialModelProfile() {
+    if (typeof window === "undefined") return "auto";
+    try {
+        return normalizeAiModelProfile(window.localStorage.getItem(AI_MODEL_PROFILE_STORAGE_KEY));
+    } catch {
+        return "auto";
     }
 }
 
@@ -122,10 +138,12 @@ export default function ThinkingMachine({
     const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
     const [canvasMode, setCanvasMode] = useState("personal");
     const [uiLanguage, setUiLanguage] = useState(readInitialUiLanguage);
+    const [modelProfile, setModelProfile] = useState(readInitialModelProfile);
     const [inputMode, setInputMode] = useState("workspace");
     const [isCanvasInteractive, setIsCanvasInteractive] = useState(true);
     const [selectedNodeId, setSelectedNodeId] = useState(null);
     const [pendingChatCandidateGraph, setPendingChatCandidateGraph] = useState(null);
+    const [inputGuidance, setInputGuidance] = useState(null);
     const [hasStartedInput, setHasStartedInput] = useState(false);
     const [currentUser] = useState(() => {
         if (initialCurrentUser) return initialCurrentUser;
@@ -138,6 +156,9 @@ export default function ThinkingMachine({
     const [teamContextSummary, setTeamContextSummary] = useState(null);
     const [isTeamContextLoading, setIsTeamContextLoading] = useState(false);
     const [teamContextError, setTeamContextError] = useState("");
+    const [adminOverviewSummary, setAdminOverviewSummary] = useState(null);
+    const [isAdminOverviewLoading, setIsAdminOverviewLoading] = useState(false);
+    const [adminOverviewError, setAdminOverviewError] = useState("");
     const [isTeamContextPanelOpen, setIsTeamContextPanelOpen] = useState(false);
     const [meetingMemory, setMeetingMemory] = useState(() => getDefaultMeetingMemory());
     const [meetingCaptureSummary, setMeetingCaptureSummary] = useState(null);
@@ -153,7 +174,7 @@ export default function ThinkingMachine({
     const [manualAlignmentByEdgeId, setManualAlignmentByEdgeId] = useState({});
     const previousConflictStateRef = useRef({});
 
-    const { isAdminMode } = useAdminMode({
+    const { isAdminMode, setIsAdminMode } = useAdminMode({
         storageKey: ADMIN_MODE_STORAGE_KEY,
         hintDismissedKey: ADMIN_HINT_DISMISSED_KEY,
     });
@@ -172,6 +193,15 @@ export default function ThinkingMachine({
             // Language preference should not block the workspace.
         }
     }, [uiLanguage]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            window.localStorage.setItem(AI_MODEL_PROFILE_STORAGE_KEY, modelProfile);
+        } catch {
+            // Model preference should not block the workspace.
+        }
+    }, [modelProfile]);
 
     // AI 제안 패널
     const [suggestions, setSuggestions] = useState([]);
@@ -229,20 +259,23 @@ export default function ThinkingMachine({
         setChatInput,
         isChatLoading,
         isChatConverting,
+        chatConversionError,
         handleDrawerModeToggle,
         handleDrawerChatSubmit,
-        handleDrawerChatConvertToNodes,
         handleDrawerContextSelect,
         resetChat,
     } = useRightDrawerChat({
         suggestions: unseenSuggestions,
         nodes,
+        edges,
         onPreviewNodesFromChat: handlePreviewNodesFromChatProxy,
         isDrawerOpen,
         setIsDrawerOpen,
         drawerMode,
         setDrawerMode,
         stage,
+        uiLanguage,
+        modelProfile,
     });
 
     const handleDrawerModeChange = useCallback((nextMode) => {
@@ -328,7 +361,10 @@ export default function ThinkingMachine({
         currentUserPicture,
     });
     const effectiveCurrentUserRole = currentMember?.role || currentUserRole;
-    const currentRoleMeta = getRoleMeta(effectiveCurrentUserRole);
+    const canAccessAdminView =
+        ["owner", "admin"].includes(String(effectiveCurrentUserRole || "").toLowerCase()) ||
+        teamMembers.length === 0;
+    const isAdminView = canAccessAdminView && isAdminMode;
     const normalizedStage = useMemo(() => normalizeReasoningStage(stage), [stage]);
 
     useProjectGraphSync({
@@ -432,6 +468,23 @@ export default function ThinkingMachine({
     useEffect(() => {
         previewNodesFromChatRef.current = handlePreviewNodesFromChat;
     }, [handlePreviewNodesFromChat]);
+
+    const {
+        messages: conceptMessages,
+        input: conceptInput,
+        setInput: setConceptInput,
+        isLoading: isConceptLoading,
+        error: conceptError,
+        submit: handleConceptSubmit,
+        reset: resetConceptStudio,
+    } = useConceptStudio({
+        projectTitle,
+        nodes,
+        selectedNodeId,
+        uiLanguage,
+        modelProfile,
+        onPreviewGraph: handlePreviewNodesFromChat,
+    });
 
     const handleSetNodeVisibility = useCallback((nodeId, nextVisibility) => {
         const normalizedNext = normalizeVisibility(nextVisibility);
@@ -567,6 +620,56 @@ export default function ThinkingMachine({
         canvasMode,
         currentUserId,
     });
+    const candidateCanvasPreviewNodes = useMemo(() => {
+        if (!pendingCandidatePreview?.nodes?.length) return [];
+        const placedNodes = placeIncomingNodesPreservingLayout(
+            canvasNodes,
+            pendingCandidatePreview.nodes,
+            pendingCandidatePreview.edges || []
+        );
+        return placedNodes.map((node) => ({
+            ...node,
+            draggable: false,
+            selectable: false,
+            focusable: false,
+            className: `${node.className || ""} tm-candidate-preview-node`.trim(),
+            style: {
+                ...(node.style || {}),
+                opacity: 0.68,
+                filter: "saturate(0.72)",
+                pointerEvents: "none",
+            },
+            data: {
+                ...node.data,
+                previewState: "draft",
+            },
+        }));
+    }, [canvasNodes, pendingCandidatePreview]);
+    const candidateCanvasPreviewEdges = useMemo(() => {
+        if (!candidateCanvasPreviewNodes.length) return [];
+        const allPreviewNodes = [...canvasNodes, ...candidateCanvasPreviewNodes];
+        return toConnectorEdges(
+            pendingCandidatePreview?.edges || [],
+            allPreviewNodes,
+            canvasEdges
+        ).map((edge) => ({
+            ...edge,
+            selectable: false,
+            focusable: false,
+            data: {
+                ...(edge.data || {}),
+                alignmentState: "partial",
+                alignmentLabel: "Draft branch",
+                alignmentStroke: "rgba(94, 143, 116, 0.48)",
+                alignmentLineDash: "5 7",
+                lineWidth: 1.25,
+            },
+        }));
+    }, [canvasEdges, canvasNodes, candidateCanvasPreviewNodes, pendingCandidatePreview?.edges]);
+    useEffect(() => {
+        if (!candidateCanvasPreviewNodes.length) return;
+        animateViewportToNodes(candidateCanvasPreviewNodes);
+    }, [animateViewportToNodes, candidateCanvasPreviewNodes]);
     const reasoningAlignmentAnalysis = useMemo(
         () => buildReasoningAlignmentAnalysis({
             nodes: canvasNodes,
@@ -574,6 +677,14 @@ export default function ThinkingMachine({
             selectedNodeId,
         }),
         [canvasEdges, canvasNodes, selectedNodeId]
+    );
+    const adminAlignmentAnalysis = useMemo(
+        () => buildReasoningAlignmentAnalysis({
+            nodes: nodes.filter((node) => node?.type === "thinkingNode"),
+            edges,
+            selectedNodeId: null,
+        }),
+        [edges, nodes]
     );
     const teamConflictAnalysis = useMemo(
         () => buildTeamConflictAnalysis({
@@ -653,10 +764,194 @@ export default function ThinkingMachine({
             }),
         [canvasEdges, handleConnectorAlignmentClick, manualAlignmentByEdgeId, reasoningAlignmentAnalysis]
     );
-    const alignmentSummary = reasoningAlignmentAnalysis?.selectedSummary || {
-        counts: reasoningAlignmentAnalysis?.counts || {},
-        sections: reasoningAlignmentAnalysis?.sections || {},
-    };
+    const alignmentSummary = useMemo(
+        () => reasoningAlignmentAnalysis?.selectedSummary || {
+            counts: reasoningAlignmentAnalysis?.counts || {},
+            sections: reasoningAlignmentAnalysis?.sections || {},
+        },
+        [reasoningAlignmentAnalysis]
+    );
+    const workspaceTranslationTexts = useMemo(() => {
+        const values = [];
+        const add = (value) => {
+            if (typeof value === "string" && value.trim()) values.push(value);
+        };
+
+        // Translate what is visible in the drawer first, then continue through the canvas in the background.
+        unseenSuggestions.forEach((suggestion) => {
+            add(suggestion?.title);
+            add(suggestion?.content);
+        });
+        nodes.forEach((node) => {
+            add(node?.data?.title);
+            add(node?.data?.content);
+            add(node?.data?.conflictSummary);
+        });
+        Object.values(alignmentSummary?.sections || {}).forEach((items) => {
+            if (!Array.isArray(items)) return;
+            items.forEach((item) => add(item?.summary));
+        });
+        add(selectedAlignmentStrategy?.diagnosis);
+        add(selectedAlignmentStrategy?.strategy);
+        selectedAlignmentStrategy?.steps?.forEach(add);
+        pendingCandidatePreview?.nodes?.forEach((node) => {
+            add(node?.data?.title);
+            add(node?.data?.content);
+        });
+        chatMessages.forEach((message) => add(message?.content));
+        Object.values(conflictExplainResultByNodeId).forEach((explanation) => {
+            add(explanation?.summary);
+            add(explanation?.whyDifferent);
+            add(explanation?.suggestedNextStep);
+        });
+
+        return values;
+    }, [
+        alignmentSummary,
+        chatMessages,
+        conflictExplainResultByNodeId,
+        nodes,
+        pendingCandidatePreview,
+        selectedAlignmentStrategy,
+        unseenSuggestions,
+    ]);
+    const { localizeText } = useWorkspaceTranslations({
+        uiLanguage,
+        texts: workspaceTranslationTexts,
+    });
+    const localizedCanvasNodes = useMemo(
+        () => canvasNodes.map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                localizedTitle: localizeText(node?.data?.title),
+                localizedContent: localizeText(node?.data?.content),
+                localizedConflictSummary: localizeText(node?.data?.conflictSummary),
+            },
+        })),
+        [canvasNodes, localizeText]
+    );
+    const localizedCandidateCanvasPreviewNodes = useMemo(
+        () => candidateCanvasPreviewNodes.map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                localizedTitle: localizeText(node?.data?.title),
+                localizedContent: localizeText(node?.data?.content),
+            },
+        })),
+        [candidateCanvasPreviewNodes, localizeText]
+    );
+    const localizedSuggestions = useMemo(
+        () => unseenSuggestions.map((suggestion) => ({
+            ...suggestion,
+            localizedTitle: localizeText(suggestion?.title),
+            localizedContent: localizeText(suggestion?.content),
+        })),
+        [localizeText, unseenSuggestions]
+    );
+    const localizedActiveSuggestion = useMemo(() => {
+        if (!activeSuggestion) return null;
+        return localizedSuggestions.find((item) => item.id === activeSuggestion.id) || {
+            ...activeSuggestion,
+            localizedTitle: localizeText(activeSuggestion?.title),
+            localizedContent: localizeText(activeSuggestion?.content),
+        };
+    }, [activeSuggestion, localizedSuggestions, localizeText]);
+    const localizedSelectedNode = useMemo(() => {
+        if (!selectedNode) return null;
+        return localizedCanvasNodes.find((node) => node.id === selectedNode.id) || selectedNode;
+    }, [localizedCanvasNodes, selectedNode]);
+    const localizedLinkedNodes = useMemo(
+        () => selectedNodeLinkedNodes.map((node) => ({
+            ...node,
+            localizedTitle: localizeText(node?.title),
+            localizedContent: localizeText(node?.content),
+        })),
+        [localizeText, selectedNodeLinkedNodes]
+    );
+    const localizedAlignmentSummary = useMemo(() => ({
+        ...alignmentSummary,
+        sections: Object.fromEntries(
+            Object.entries(alignmentSummary?.sections || {}).map(([key, items]) => [
+                key,
+                Array.isArray(items)
+                    ? items.map((item) => ({
+                        ...item,
+                        localizedSummary: localizeText(item?.summary),
+                    }))
+                    : items,
+            ])
+        ),
+    }), [alignmentSummary, localizeText]);
+    const localizedAlignmentStrategy = useMemo(() => {
+        if (!selectedAlignmentStrategy) return null;
+        return {
+            ...selectedAlignmentStrategy,
+            sourceNode: selectedAlignmentStrategy.sourceNode
+                ? {
+                    ...selectedAlignmentStrategy.sourceNode,
+                    localizedTitle: localizeText(selectedAlignmentStrategy.sourceNode.title),
+                }
+                : null,
+            targetNode: selectedAlignmentStrategy.targetNode
+                ? {
+                    ...selectedAlignmentStrategy.targetNode,
+                    localizedTitle: localizeText(selectedAlignmentStrategy.targetNode.title),
+                }
+                : null,
+            localizedDiagnosis: localizeText(selectedAlignmentStrategy.diagnosis),
+            localizedStrategy: localizeText(selectedAlignmentStrategy.strategy),
+            localizedSteps: selectedAlignmentStrategy.steps?.map(localizeText) || [],
+        };
+    }, [localizeText, selectedAlignmentStrategy]);
+    const localizedCandidatePreview = useMemo(() => {
+        if (!pendingCandidatePreview) return null;
+        return {
+            ...pendingCandidatePreview,
+            nodes: (pendingCandidatePreview.nodes || []).map((node) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    localizedTitle: localizeText(node?.data?.title),
+                    localizedContent: localizeText(node?.data?.content),
+                },
+            })),
+        };
+    }, [localizeText, pendingCandidatePreview]);
+    const localizedChatMessages = useMemo(
+        () => chatMessages.map((message) => ({
+            ...message,
+            localizedContent: localizeText(message?.content),
+        })),
+        [chatMessages, localizeText]
+    );
+    const localizedConflictByNodeId = useMemo(
+        () => Object.fromEntries(
+            Object.entries(teamConflictAnalysis?.conflictByNodeId || {}).map(([nodeId, conflict]) => [
+                nodeId,
+                {
+                    ...conflict,
+                    linkedNodeTitles: (conflict?.linkedNodeTitles || []).map(localizeText),
+                },
+            ])
+        ),
+        [localizeText, teamConflictAnalysis?.conflictByNodeId]
+    );
+    const localizedConflictExplanations = useMemo(
+        () => Object.fromEntries(
+            Object.entries(conflictExplainResultByNodeId).map(([nodeId, explanation]) => [
+                nodeId,
+                {
+                    ...explanation,
+                    summary: localizeText(explanation?.summary),
+                    whyDifferent: localizeText(explanation?.whyDifferent),
+                    suggestedNextStep: localizeText(explanation?.suggestedNextStep),
+                },
+            ])
+        ),
+        [conflictExplainResultByNodeId, localizeText]
+    );
     const meetingMemoryReadout = useMemo(
         () => buildMeetingMemoryReadout(meetingMemory, nodes),
         [meetingMemory, nodes]
@@ -806,6 +1101,7 @@ export default function ThinkingMachine({
     }, [setActiveSuggestion]);
 
     const reasoningModeProfile = useMemo(() => getReasoningModeProfile(normalizedStage), [normalizedStage]);
+    const workspaceCopy = useMemo(() => getWorkspaceCopy(uiLanguage), [uiLanguage]);
     const { handleInputSubmit } = useThinkingAiAnalyze({
         nodes,
         edges,
@@ -820,6 +1116,9 @@ export default function ThinkingMachine({
         recordProjectActivity,
         animateViewportToNodes,
         setIsAnalyzing,
+        setInputGuidance,
+        uiLanguage,
+        modelProfile,
         currentUserId,
         currentUserName,
     });
@@ -830,11 +1129,37 @@ export default function ThinkingMachine({
             resetChat?.();
             setDrawerMode("chat");
             setIsDrawerOpen(true);
+        } else if (nextMode === "concept") {
+            setDrawerMode("chat");
+            setIsDrawerOpen(true);
         }
     }, [resetChat, setActiveSuggestion]);
+    const prepareStarterInput = useCallback((value) => {
+        setActiveSuggestion(null);
+        resetChat?.();
+        setSelectedNodeId(null);
+        setInputMode("workspace");
+        setDrawerMode("chat");
+        setIsDrawerOpen(true);
+        setChatInput(value);
+        setHasStartedInput(true);
+    }, [resetChat, setActiveSuggestion, setChatInput]);
+    const handleStarterIntentSelect = useCallback(({ prompt } = {}) => {
+        prepareStarterInput(String(prompt || ""));
+    }, [prepareStarterInput]);
+    const handleStarterImport = useCallback(({ fileName, content } = {}) => {
+        const prefix = workspaceCopy.starter.importedPrefix;
+        prepareStarterInput(`${prefix}: ${fileName || "notes"}\n\n${String(content || "")}`);
+    }, [prepareStarterInput, workspaceCopy.starter.importedPrefix]);
+    const handleBlankWorkspace = useCallback(() => {
+        prepareStarterInput("");
+    }, [prepareStarterInput]);
+    const showWorkspaceStarter = !isGraphHydrating && !hasThinkingGraph && !hasStartedInput;
     const { handleMeetingCaptureSubmit } = useMeetingCaptureFlow({
         projectId,
         projectTitle,
+        uiLanguage,
+        modelProfile,
         nodes,
         edges,
         currentUserId,
@@ -993,7 +1318,78 @@ export default function ThinkingMachine({
         normalizedStage,
         projectId,
         projectTitle,
+        uiLanguage,
+        modelProfile,
     });
+
+    const handleGenerateAdminOverview = useCallback(async () => {
+        if (!canAccessAdminView) return;
+        const teamVisibility = new Set(["shared", "reviewed", "agreed"]);
+        const thinkingNodes = nodes.filter((node) => node?.type === "thinkingNode");
+        const nodeVisibilityById = new Map(
+            thinkingNodes.map((node) => [node.id, normalizeVisibility(node?.data?.visibility)])
+        );
+        const relatedNodes = thinkingNodes.slice(0, 32).map((node) => {
+            const visibility = nodeVisibilityById.get(node.id);
+            const isTeamVisible = teamVisibility.has(visibility);
+            return {
+                id: node.id,
+                title: isTeamVisible ? node?.data?.title || "Untitled node" : `Private ${node?.data?.category || "reasoning"} item`,
+                content: isTeamVisible ? node?.data?.content || "" : "Private content withheld from the admin briefing.",
+                category: node?.data?.category,
+                phase: node?.data?.phase,
+                visibility,
+            };
+        });
+        const activityEvents = activityLog.slice(0, 24).map((item) => {
+            const isTeamVisible = teamVisibility.has(nodeVisibilityById.get(item?.nodeId));
+            return {
+                id: item?.id,
+                type: item?.type,
+                timestamp: item?.timestamp,
+                userId: item?.userId,
+                userName: item?.userName,
+                userRole: item?.userRole,
+                nodeId: item?.nodeId,
+                nodeTitle: isTeamVisible ? item?.nodeTitle : item?.nodeId ? "Private reasoning item" : item?.nodeTitle,
+                relatedNodeIds: item?.relatedNodeIds,
+            };
+        });
+
+        setIsAdminOverviewLoading(true);
+        setAdminOverviewError("");
+        try {
+            const result = await summarizeTeamContext({
+                scope: "project",
+                projectId,
+                projectTitle,
+                activityEvents,
+                relatedNodes,
+                stage: normalizedStage,
+                uiLanguage,
+                modelProfile,
+            });
+            setAdminOverviewSummary(result);
+        } catch (error) {
+            setAdminOverviewError(
+                error?.response?.data?.error ||
+                error?.message ||
+                workspaceCopy.errors.teamContext
+            );
+        } finally {
+            setIsAdminOverviewLoading(false);
+        }
+    }, [
+        activityLog,
+        canAccessAdminView,
+        modelProfile,
+        nodes,
+        normalizedStage,
+        projectId,
+        projectTitle,
+        uiLanguage,
+        workspaceCopy.errors.teamContext,
+    ]);
 
     const handleToggleTeamContextPanel = useCallback(() => {
         setIsTeamContextPanelOpen((prev) => !prev);
@@ -1057,6 +1453,8 @@ export default function ThinkingMachine({
                 conflictingNodes,
                 surroundingNodes,
                 activityEvents: relevantActivity,
+                uiLanguage,
+                modelProfile,
             });
             setConflictExplainResultByNodeId((prev) => ({
                 ...prev,
@@ -1066,15 +1464,15 @@ export default function ThinkingMachine({
             const message =
                 error?.response?.data?.error ||
                 error?.message ||
-                "Failed to explain the conflict.";
+                workspaceCopy.conflict.failed;
             setConflictExplainResultByNodeId((prev) => ({
                 ...prev,
                 [nodeId]: {
                     summary: message,
-                    whyDifferent: "The AI explanation could not be generated right now.",
+                    whyDifferent: workspaceCopy.conflict.unavailable,
                     assumptionGap: "",
                     riskIfIgnored: "",
-                    suggestedNextStep: "Try again after the graph or network state stabilizes.",
+                    suggestedNextStep: workspaceCopy.conflict.retry,
                 },
             }));
         } finally {
@@ -1083,7 +1481,7 @@ export default function ThinkingMachine({
                 [nodeId]: false,
             }));
         }
-    }, [activityLog, edges, nodes, normalizedStage, projectTitle, teamConflictAnalysis]);
+    }, [activityLog, edges, modelProfile, nodes, normalizedStage, projectTitle, teamConflictAnalysis, uiLanguage, workspaceCopy.conflict]);
 
     return (
         <div className="w-full h-screen relative flex flex-col overflow-hidden bg-slate-50">
@@ -1107,7 +1505,8 @@ export default function ThinkingMachine({
                 projectTitle={projectTitle}
                 onProjectTitleChange={setProjectTitle}
                 projectMetaHref={projectMetaHref}
-                projectMetaLabel="Project workspace"
+                projectMetaLabel={workspaceCopy.topBar.projectWorkspace}
+                uiLanguage={uiLanguage}
                 canvasMode={canvasMode}
                 onCanvasModeChange={setCanvasMode}
                 drawerMode={drawerMode}
@@ -1115,56 +1514,37 @@ export default function ThinkingMachine({
                 isDrawerOpen={isDrawerOpen}
             />
 
-            <header className="absolute top-0 left-0 right-0 z-50 p-6 flex justify-end items-center bg-transparent pointer-events-none">
-                <div className="flex gap-2 pointer-events-auto">
-                    {isAdminMode && (
-                        <div className="flex items-center gap-2 rounded-2xl border border-white/70 bg-white/76 px-3 py-2 text-xs text-slate-700 shadow-lg backdrop-blur-md">
-                            <span className="rounded-full bg-slate-800/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white">
-                                Admin Mode
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 font-semibold text-indigo-800">
-                                <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></span>
-                                Autonomous Agent Active
-                            </span>
-                            <span className="text-slate-400">|</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${currentRoleMeta.className}`}>
-                                {currentRoleMeta.label}
-                            </span>
-                            <span>Nodes {canvasNodes.length}</span>
-                            <span>Suggestions {suggestions.length}</span>
-                        </div>
-                    )}
-                </div>
-            </header>
-
             <main className="flex-1 w-full h-full relative">
-                <LeftTeamContextPanel
-                    isOpen={isTeamContextPanelOpen}
-                    teamMembers={teamMembers}
-                    activityItems={filteredTeamActivity}
-                    selectedMemberId={selectedTeamMemberId}
-                    selectedActivityId={selectedActivityEventId}
-                    summary={teamContextSummary}
-                    isSummaryLoading={isTeamContextLoading}
-                    summaryError={teamContextError}
-                    meetingMemoryReadout={meetingMemoryReadout}
-                    isMeetingMemoryLoading={isMeetingCaptureLoading}
-                    currentUserId={currentUserId}
-                    onToggle={handleToggleTeamContextPanel}
-                    onSelectMember={handleSelectTeamMember}
-                    onSelectActivity={handleSelectActivity}
-                    onExplainContext={handleExplainTeamContext}
-                    onFocusNode={(nodeId) => focusNodesByIds([nodeId])}
-                />
-                {!hasThinkingGraph ? (
+                {!showWorkspaceStarter && !isAdminView ? (
+                    <LeftTeamContextPanel
+                        isOpen={isTeamContextPanelOpen}
+                        teamMembers={teamMembers}
+                        activityItems={filteredTeamActivity}
+                        selectedMemberId={selectedTeamMemberId}
+                        selectedActivityId={selectedActivityEventId}
+                        summary={teamContextSummary}
+                        isSummaryLoading={isTeamContextLoading}
+                        summaryError={teamContextError}
+                        meetingMemoryReadout={meetingMemoryReadout}
+                        isMeetingMemoryLoading={isMeetingCaptureLoading}
+                        currentUserId={currentUserId}
+                        onToggle={handleToggleTeamContextPanel}
+                        onSelectMember={handleSelectTeamMember}
+                        onSelectActivity={handleSelectActivity}
+                        onExplainContext={handleExplainTeamContext}
+                        onFocusNode={(nodeId) => focusNodesByIds([nodeId])}
+                        uiLanguage={uiLanguage}
+                    />
+                ) : null}
+                {!hasThinkingGraph && !localizedCandidateCanvasPreviewNodes.length ? (
                     <div className="tm-canvas-bg h-full w-full" data-stage={stage}>
                         <div className="absolute inset-0 z-[5]" />
                     </div>
                 ) : (
                     <>
                         <NodeMap
-                            nodes={canvasNodes}
-                            edges={decoratedCanvasEdges}
+                            nodes={[...localizedCanvasNodes, ...localizedCandidateCanvasPreviewNodes]}
+                            edges={[...decoratedCanvasEdges, ...candidateCanvasPreviewEdges]}
                             onNodesChange={filteredOnNodesChange}
                             onEdgesChange={onEdgesChange}
                             highlightedNodeIds={highlightedNodeIds}
@@ -1184,29 +1564,61 @@ export default function ThinkingMachine({
                             }}
                             draftSubmittingIds={draftSubmittingIds}
                             canvasStage={stage}
-                            conflictByNodeId={teamConflictAnalysis?.conflictByNodeId || {}}
+                            conflictByNodeId={localizedConflictByNodeId}
                             openConflictNodeId={openConflictNodeId}
-                            conflictExplainResultByNodeId={conflictExplainResultByNodeId}
+                            conflictExplainResultByNodeId={localizedConflictExplanations}
                             conflictExplainLoadingByNodeId={conflictExplainLoadingByNodeId}
                             onToggleConflictPopover={handleToggleConflictPopover}
                             onExplainConflict={handleExplainConflict}
+                            uiLanguage={uiLanguage}
                         />
 
                     </>
                 )}
 
+                <AnimatePresence>
+                    {isAdminView && !showWorkspaceStarter ? (
+                        <AdminOverviewPanel
+                            projectTitle={projectTitle}
+                            nodes={nodes}
+                            activityLog={activityLog}
+                            teamMembers={teamMembers}
+                            alignmentCounts={adminAlignmentAnalysis?.counts}
+                            currentUserId={currentUserId}
+                            summary={adminOverviewSummary}
+                            isSummaryLoading={isAdminOverviewLoading}
+                            summaryError={adminOverviewError}
+                            onGenerateSummary={handleGenerateAdminOverview}
+                            onClose={() => setIsAdminMode(false)}
+                            uiLanguage={uiLanguage}
+                        />
+                    ) : null}
+                </AnimatePresence>
+
+                {showWorkspaceStarter ? (
+                    <WorkspaceStarter
+                        uiLanguage={uiLanguage}
+                        onUiLanguageChange={setUiLanguage}
+                        onSelectIntent={handleStarterIntentSelect}
+                        onBlankWorkspace={handleBlankWorkspace}
+                        onImportWork={handleStarterImport}
+                    />
+                ) : null}
+
                 {showDraftConvertPrompt && (
                     <div className="pointer-events-none absolute inset-x-0 top-20 z-[75] flex justify-center">
                         <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/70 bg-white/72 px-4 py-2 text-[12px] font-semibold text-slate-700 shadow-[0_12px_26px_rgba(0,0,0,0.14)] backdrop-blur-[12px]">
                             <span>
-                                Convert {selectedDraftIds.length} drafts into nodes?
+                                {uiLanguage === "en"
+                                    ? `${workspaceCopy.draft.convertPrefix} ${selectedDraftIds.length} ${workspaceCopy.draft.convertSuffix}`
+                                    : `${workspaceCopy.draft.convertPrefix} ${selectedDraftIds.length}${workspaceCopy.draft.convertSuffix}`}
                             </span>
                             <button
                                 type="button"
                                 onClick={() => void convertDraftsToGroup(draftConvertIdsRef.current)}
                                 className="inline-flex items-center justify-center rounded-full bg-teal-500 px-3 py-1 text-[12px] font-semibold text-white transition hover:bg-teal-600 disabled:opacity-55"
                                 disabled={isAnalyzing}
-                                aria-label="Confirm convert drafts"
+                                aria-label={workspaceCopy.draft.confirm}
                             >
                                 ✓
                             </button>
@@ -1214,7 +1626,7 @@ export default function ThinkingMachine({
                                 type="button"
                                 onClick={() => setShowDraftConvertPrompt(false)}
                                 className="inline-flex items-center justify-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-[12px] font-semibold text-slate-600 transition hover:bg-white/80"
-                                aria-label="Cancel convert drafts"
+                                aria-label={workspaceCopy.draft.cancel}
                             >
                                 ✕
                             </button>
@@ -1223,27 +1635,29 @@ export default function ThinkingMachine({
                 )}
 
                 <AnimatePresence>
-                    {isDrawerOpen ? (
+                    {isDrawerOpen && !showWorkspaceStarter && !isAdminView ? (
                         <RightAgentDrawer
                             isOpen={isDrawerOpen}
                             mode={drawerMode}
                             stage={normalizedStage}
-                            suggestions={unseenSuggestions}
+                            suggestions={localizedSuggestions}
                             onStageChange={handleStageChange}
-                            activeSuggestion={activeSuggestion}
-                            selectedNode={selectedNode}
-                            linkedNodes={selectedNodeLinkedNodes}
-	                            candidateGraph={pendingCandidatePreview}
-	                            alignmentSummary={alignmentSummary}
-	                            alignmentStrategy={selectedAlignmentStrategy}
+                            activeSuggestion={localizedActiveSuggestion}
+                            selectedNode={localizedSelectedNode}
+                            linkedNodes={localizedLinkedNodes}
+	                            candidateGraph={localizedCandidatePreview}
+	                            alignmentSummary={localizedAlignmentSummary}
+	                            alignmentStrategy={localizedAlignmentStrategy}
+	                            inputGuidance={inputGuidance}
 	                            currentUserRole={effectiveCurrentUserRole}
                             projectLastUpdated={projectLastUpdated}
                             activityLog={activityLog}
                             lastRefreshedAt={lastRefreshedAt}
-                            chatMessages={chatMessages}
+                            chatMessages={localizedChatMessages}
                             chatInput={chatInput}
                             isChatLoading={isAnalyzing || isChatLoading}
                             isChatConverting={isChatConverting}
+                            chatConversionError={chatConversionError}
                             inputMode={inputMode}
                             onInputModeChange={handleInputModeChange}
                             meetingCaptureSummary={meetingCaptureSummary}
@@ -1254,8 +1668,25 @@ export default function ThinkingMachine({
                                 }
                                 setChatInput(value);
                             }}
+                            onUseGuidancePrompt={(prompt) => {
+                                setChatInput(prompt);
+                                setInputGuidance(null);
+                            }}
+                            onDismissInputGuidance={() => setInputGuidance(null)}
                             onChatSubmit={handleRightDrawerSubmit}
-                            onChatConvertToNodes={handleDrawerChatConvertToNodes}
+                            conceptMessages={conceptMessages}
+                            conceptInput={conceptInput}
+                            isConceptLoading={isConceptLoading}
+                            conceptError={conceptError}
+                            onConceptInputChange={(value) => {
+                                if (String(value || "").trim()) setHasStartedInput(true);
+                                setConceptInput(value);
+                            }}
+                            onConceptSubmit={(prompt) => {
+                                setHasStartedInput(true);
+                                void handleConceptSubmit(prompt);
+                            }}
+                            onConceptReset={resetConceptStudio}
                             onCommitCandidateNodes={handleCommitCandidateNodes}
                             onCommitCandidateNodesAsPrivate={handleCommitCandidateNodesAsPrivate}
                             onDiscardCandidateNodes={handleDiscardCandidateNodes}
@@ -1268,12 +1699,17 @@ export default function ThinkingMachine({
 	                            onRefineAlignmentStrategy={handleRefineSelectedAlignmentStrategy}
 	                            onDismissAlignmentStrategy={handleDismissSelectedAlignmentStrategy}
 	                            modeLabel={reasoningModeProfile.label}
-                            candidateHint={reasoningModeProfile.candidateHint}
+                            candidateHint={uiLanguage === "en" ? reasoningModeProfile.candidateHint : workspaceCopy.candidate.defaultHint}
                             selectedNodeQuickActions={reasoningModeProfile.selectedNodeActions}
                             uiLanguage={uiLanguage}
                             onUiLanguageChange={setUiLanguage}
+                            modelProfile={modelProfile}
+                            onModelProfileChange={setModelProfile}
                             canvasMode={canvasMode}
                             onCanvasModeChange={setCanvasMode}
+                            canAccessAdminView={canAccessAdminView}
+                            isAdminView={isAdminView}
+                            onAdminViewChange={setIsAdminMode}
                             chatButtonRef={chatButtonRef}
                             chatDropZoneRef={chatDropZoneRef}
                             isChatDropActive={isChatDropActive}

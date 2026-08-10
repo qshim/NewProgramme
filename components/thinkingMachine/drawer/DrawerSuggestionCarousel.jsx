@@ -11,6 +11,8 @@ export default function DrawerSuggestionCarousel({
   canScrollSuggestionsRight,
   onSuggestionScroll,
   onChatContextSelect,
+  leftLabel = "Scroll suggestions left",
+  rightLabel = "Scroll suggestions right",
 }) {
   if (!suggestionItems.length) return null;
 
@@ -36,7 +38,7 @@ export default function DrawerSuggestionCarousel({
         onClick={() => onSuggestionScroll?.("left")}
         disabled={!canScrollSuggestionsLeft}
         className="pointer-events-auto absolute left-0 top-1/2 z-[3] inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/82 text-slate-600 shadow-[0_6px_14px_rgba(0,0,0,0.08)] transition disabled:cursor-default disabled:opacity-35"
-        aria-label="Scroll suggestions left"
+        aria-label={leftLabel}
       >
         <ArrowLeft className="h-3.5 w-3.5" />
       </button>
@@ -45,7 +47,7 @@ export default function DrawerSuggestionCarousel({
         onClick={() => onSuggestionScroll?.("right")}
         disabled={!canScrollSuggestionsRight}
         className="pointer-events-auto absolute right-0 top-1/2 z-[3] inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/82 text-slate-600 shadow-[0_6px_14px_rgba(0,0,0,0.08)] transition disabled:cursor-default disabled:opacity-35"
-        aria-label="Scroll suggestions right"
+        aria-label={rightLabel}
       >
         <ArrowRight className="h-3.5 w-3.5" />
       </button>

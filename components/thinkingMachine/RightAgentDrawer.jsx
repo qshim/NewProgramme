@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUp, GitBranch, Image as ImageIcon, Loader2, Sparkles, StickyNote } from "lucide-react";
+import { ArrowUp, Image as ImageIcon, ShieldCheck, Sparkles, StickyNote } from "lucide-react";
 import {
   getSuggestionTagMeta,
   getTypeMeta,
@@ -13,10 +13,13 @@ import NodeDetailCard from "@/components/thinkingMachine/cards/NodeDetailCard";
 import CandidateGraphCard from "@/components/thinkingMachine/cards/CandidateGraphCard";
 import AlignmentSummaryCard from "@/components/thinkingMachine/cards/AlignmentSummaryCard";
 import AlignmentStrategyCard from "@/components/thinkingMachine/cards/AlignmentStrategyCard";
+import InputGuidanceCard from "@/components/thinkingMachine/cards/InputGuidanceCard";
+import ModelProfileControl from "@/components/thinkingMachine/ModelProfileControl";
 import DrawerSuggestionCarousel from "@/components/thinkingMachine/drawer/DrawerSuggestionCarousel";
 import DrawerMeetingCaptureSection from "@/components/thinkingMachine/drawer/DrawerMeetingCaptureSection";
 import DrawerChatTranscript from "@/components/thinkingMachine/drawer/DrawerChatTranscript";
 import { getRightDrawerCopy } from "@/components/thinkingMachine/drawer/rightDrawerCopy";
+import ConceptStudioPanel from "@/components/thinkingMachine/ConceptStudioPanel";
 
 function MicButtonIcon() {
   return (
@@ -44,14 +47,22 @@ export default function RightAgentDrawer({
   candidateGraph,
   alignmentSummary,
   alignmentStrategy,
+  inputGuidance,
   currentUserRole = "owner",
   chatMessages,
   chatInput,
   isChatLoading,
   isChatConverting,
+  chatConversionError = "",
   onChatInputChange,
   onChatSubmit,
-  onChatConvertToNodes,
+  conceptMessages = [],
+  conceptInput = "",
+  isConceptLoading = false,
+  conceptError = "",
+  onConceptInputChange,
+  onConceptSubmit,
+  onConceptReset,
   inputMode = "workspace",
   onInputModeChange,
   meetingCaptureSummary,
@@ -67,13 +78,20 @@ export default function RightAgentDrawer({
   onApplyAlignmentStrategy,
   onRefineAlignmentStrategy,
   onDismissAlignmentStrategy,
+  onUseGuidancePrompt,
+  onDismissInputGuidance,
   modeLabel,
   candidateHint,
   selectedNodeQuickActions,
   uiLanguage = "en",
   onUiLanguageChange,
+  modelProfile = "auto",
+  onModelProfileChange,
   canvasMode = "personal",
   onCanvasModeChange,
+  canAccessAdminView = false,
+  isAdminView = false,
+  onAdminViewChange,
   chatButtonRef,
   chatDropZoneRef,
   isChatDropActive,
@@ -85,8 +103,9 @@ export default function RightAgentDrawer({
   const isTip = mode === "tip";
   const isChat = mode === "chat";
   const isMeetingCapture = inputMode === "meeting";
+  const isConceptStudio = inputMode === "concept";
   const suggestionItems = Array.isArray(suggestions) ? suggestions : [];
-  const shouldShowContextPanel = suggestionItems.length > 0;
+  const shouldShowContextPanel = suggestionItems.length > 0 && !isConceptStudio;
   const activeMeta = normalizeNodeData(activeSuggestion || {});
   const categoryColors = getTypeMeta(activeMeta.category);
   const activeSuggestionTags = normalizeSuggestionTags(activeSuggestion?.suggestionTags || activeSuggestion?.tags, activeMeta);
@@ -103,7 +122,7 @@ export default function RightAgentDrawer({
   const [isLoadingOverlayExiting, setIsLoadingOverlayExiting] = useState(false);
   const [canScrollSuggestionsLeft, setCanScrollSuggestionsLeft] = useState(false);
   const [canScrollSuggestionsRight, setCanScrollSuggestionsRight] = useState(false);
-  const shouldShowDrawerHint = showDrawerHint && !selectedNode;
+  const shouldShowDrawerHint = showDrawerHint && !selectedNode && !isConceptStudio;
   const copy = getRightDrawerCopy(uiLanguage);
 
   useEffect(() => {
@@ -112,9 +131,16 @@ export default function RightAgentDrawer({
   }, [chatMessages, isChatLoading, isOpen, isChat]);
 
   useEffect(() => {
+    if (!isOpen || !isConceptStudio) return;
+    const panel = panelScrollRef.current;
+    if (!panel) return;
+    panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+  }, [conceptMessages, isConceptLoading, isConceptStudio, isOpen]);
+
+  useEffect(() => {
     contextScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
     panelScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
-  }, [mode, activeSuggestion?.id]);
+  }, [mode, inputMode, activeSuggestion?.id]);
 
   useEffect(() => {
     const el = contextScrollRef.current;
@@ -136,7 +162,7 @@ export default function RightAgentDrawer({
   }, [suggestionItems.length]);
 
   useEffect(() => {
-    if (!isChatLoading && loadingOverlayText) {
+    if (!isChatLoading && !isConceptLoading && loadingOverlayText) {
       const exitStartTimer = window.setTimeout(() => {
         setIsLoadingOverlayExiting(true);
       }, 0);
@@ -150,16 +176,18 @@ export default function RightAgentDrawer({
         window.clearTimeout(exitTimer);
       };
     }
-  }, [isChatLoading, loadingOverlayText]);
+  }, [isChatLoading, isConceptLoading, loadingOverlayText]);
 
   const handleChatSubmit = (event) => {
     event.preventDefault();
-    const submittedText = String(chatInput || "").trim();
-    if (submittedText && !isChatLoading) {
+    const submittedText = String(isConceptStudio ? conceptInput : chatInput || "").trim();
+    const isSubmitting = isConceptStudio ? isConceptLoading : isChatLoading;
+    if (submittedText && !isSubmitting) {
       setLoadingOverlayText(submittedText);
       setIsLoadingOverlayExiting(false);
     }
-    onChatSubmit?.();
+    if (isConceptStudio) onConceptSubmit?.();
+    else onChatSubmit?.();
   };
 
   const handleSuggestionScroll = (direction) => {
@@ -235,7 +263,7 @@ export default function RightAgentDrawer({
                         color: "#758E71",
                       }}
                     >
-                      Start with a thought, or select a node to extend it.
+                      {copy.hint}
                     </div>
                   </div>
                 </div>
@@ -243,13 +271,13 @@ export default function RightAgentDrawer({
             </div>
           <div className="relative z-10 flex h-full min-h-0 flex-col px-5 pb-4 pt-4">
             <div className="mb-2 flex justify-end pr-1">
-              <div className="flex items-center gap-2">
-                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-white/80 bg-white/72 p-[2px] shadow-[0_7px_18px_rgba(76,108,90,0.10)] backdrop-blur-[14px]">
+              <div className="flex items-center gap-1">
+                <div className="pointer-events-auto inline-flex shrink-0 items-center rounded-[14px] border border-white/80 bg-white/72 p-[2px] shadow-[0_7px_18px_rgba(76,108,90,0.10)] backdrop-blur-[14px]">
                   <button
                     type="button"
                     onClick={() => onInputModeChange?.("workspace")}
-                    className={`inline-flex h-6 min-w-[74px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
-                      !isMeetingCapture
+                    className={`inline-flex h-6 min-w-[50px] items-center justify-center whitespace-nowrap rounded-[12px] px-1.5 text-[9px] font-semibold transition ${
+                      !isMeetingCapture && !isConceptStudio
                         ? "bg-[#6F8A7B] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
                         : "text-[#839083]"
                     }`}
@@ -258,8 +286,19 @@ export default function RightAgentDrawer({
                   </button>
                   <button
                     type="button"
+                    onClick={() => onInputModeChange?.("concept")}
+                    className={`inline-flex h-6 min-w-[44px] items-center justify-center whitespace-nowrap rounded-[12px] px-1.5 text-[9px] font-semibold transition ${
+                      isConceptStudio
+                        ? "bg-[#6F8A7B] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
+                        : "text-[#839083]"
+                    }`}
+                  >
+                    Concept
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onInputModeChange?.("meeting")}
-                    className={`inline-flex h-6 min-w-[68px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                    className={`inline-flex h-6 min-w-[43px] items-center justify-center whitespace-nowrap rounded-[12px] px-1.5 text-[9px] font-semibold transition ${
                       isMeetingCapture
                         ? "bg-[#6F8A7B] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
                         : "text-[#839083]"
@@ -268,36 +307,53 @@ export default function RightAgentDrawer({
                     {copy.meetingTab}
                   </button>
                 </div>
-                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-white/80 bg-white/72 p-[2px] shadow-[0_7px_18px_rgba(76,108,90,0.10)] backdrop-blur-[14px]">
+                <div className="pointer-events-auto inline-flex shrink-0 items-center rounded-[14px] border border-white/80 bg-white/72 p-[2px] shadow-[0_7px_18px_rgba(76,108,90,0.10)] backdrop-blur-[14px]">
                 <button
                   type="button"
                   onClick={() => onCanvasModeChange?.("personal")}
-                  className={`inline-flex h-6 min-w-[62px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                  className={`inline-flex h-6 min-w-[42px] items-center justify-center whitespace-nowrap rounded-[12px] px-1 text-[9px] font-semibold transition ${
                     canvasMode === "personal"
                       ? "bg-[#7BA592] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
                       : "text-[#839083]"
                   }`}
                 >
-                  Personal
+                  {copy.personal}
                 </button>
                 <button
                   type="button"
                   onClick={() => onCanvasModeChange?.("team")}
-                  className={`inline-flex h-6 min-w-[50px] items-center justify-center rounded-[12px] px-2.5 text-[10px] font-semibold transition ${
+                  className={`inline-flex h-6 min-w-[35px] items-center justify-center whitespace-nowrap rounded-[12px] px-1 text-[9px] font-semibold transition ${
                     canvasMode === "team"
                       ? "bg-[#7BA592] text-white shadow-[0_3px_8px_rgba(123,165,146,0.20)]"
                       : "text-[#A2ABA1]"
                   }`}
                 >
-                  Team
+                  {copy.team}
                 </button>
                 </div>
-                <div className="pointer-events-auto inline-flex items-center rounded-[14px] border border-slate-200/80 bg-[#F0F1EF]/86 p-[2px] shadow-[0_5px_14px_rgba(15,23,42,0.06)] backdrop-blur-[14px]">
+                {canAccessAdminView ? (
+                  <button
+                    type="button"
+                    onClick={() => onAdminViewChange?.(!isAdminView)}
+                    aria-pressed={isAdminView}
+                    aria-label={uiLanguage === "ko" ? "Admin view 전환" : uiLanguage === "ja" ? "Admin viewを切り替え" : "Toggle admin view"}
+                    title={uiLanguage === "ko" ? "프로젝트 전체 보기" : uiLanguage === "ja" ? "プロジェクト全体ビュー" : "Project overview"}
+                      className={`pointer-events-auto inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-[14px] border text-[0px] font-semibold transition ${
+                      isAdminView
+                        ? "border-[#708A7A] bg-[#647E6E] text-white shadow-[0_3px_8px_rgba(68,91,77,0.18)]"
+                        : "border-slate-200/80 bg-[#F0F1EF]/86 text-[#78847C] hover:bg-white"
+                    }`}
+                  >
+                    <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                    <span className="sr-only">Admin</span>
+                  </button>
+                ) : null}
+                <div className="pointer-events-auto inline-flex shrink-0 items-center rounded-[14px] border border-slate-200/80 bg-[#F0F1EF]/86 p-[2px] shadow-[0_5px_14px_rgba(15,23,42,0.06)] backdrop-blur-[14px]">
                   <button
                     type="button"
                     onClick={() => onUiLanguageChange?.("en")}
-                    aria-label="Switch interface language to English"
-                    className={`inline-flex h-6 min-w-[31px] items-center justify-center rounded-[12px] px-2 text-[10px] font-bold transition ${
+                    aria-label={copy.switchEnglish}
+                    className={`inline-flex h-6 min-w-[27px] items-center justify-center rounded-[12px] px-1.5 text-[10px] font-bold transition ${
                       uiLanguage === "en"
                         ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
                         : "text-slate-400"
@@ -308,14 +364,26 @@ export default function RightAgentDrawer({
                   <button
                     type="button"
                     onClick={() => onUiLanguageChange?.("ko")}
-                    aria-label="Switch interface language to Korean"
-                    className={`inline-flex h-6 min-w-[31px] items-center justify-center rounded-[12px] px-2 text-[10px] font-bold transition ${
+                    aria-label={copy.switchKorean}
+                    className={`inline-flex h-6 min-w-[27px] items-center justify-center rounded-[12px] px-1.5 text-[10px] font-bold transition ${
                       uiLanguage === "ko"
                         ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
                         : "text-slate-400"
                     }`}
                   >
                     KR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUiLanguageChange?.("ja")}
+                    aria-label={copy.switchJapanese}
+                    className={`inline-flex h-6 min-w-[27px] items-center justify-center rounded-[12px] px-1.5 text-[10px] font-bold transition ${
+                      uiLanguage === "ja"
+                        ? "bg-white text-slate-700 shadow-[0_2px_7px_rgba(15,23,42,0.08)]"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    JP
                   </button>
                 </div>
               </div>
@@ -330,6 +398,8 @@ export default function RightAgentDrawer({
                 canScrollSuggestionsRight={canScrollSuggestionsRight}
                 onSuggestionScroll={handleSuggestionScroll}
                 onChatContextSelect={onChatContextSelect}
+                leftLabel={copy.scrollLeft}
+                rightLabel={copy.scrollRight}
               />
             ) : null}
 
@@ -341,14 +411,41 @@ export default function RightAgentDrawer({
                     className="min-h-0 flex-1 overflow-y-auto px-1"
                     style={{ scrollbarWidth: "none" }}
                   >
+                    {isConceptStudio ? (
+                      <div className="flex flex-col gap-3 pb-2">
+                        <ConceptStudioPanel
+                          messages={conceptMessages}
+                          isLoading={isConceptLoading}
+                          error={conceptError}
+                          onSubmit={onConceptSubmit}
+                          onReset={onConceptReset}
+                          uiLanguage={uiLanguage}
+                        />
+                        <CandidateGraphCard
+                          candidateGraph={candidateGraph}
+                          candidateHint={candidateHint}
+                          onCommit={onCommitCandidateNodes}
+                          onCommitAsPrivate={onCommitCandidateNodesAsPrivate}
+                          onDiscard={onDiscardCandidateNodes}
+                          uiLanguage={uiLanguage}
+                        />
+                      </div>
+                    ) : (
 	                    <div className="flex flex-col gap-3 pb-2">
+	                      <InputGuidanceCard
+	                        guidance={inputGuidance}
+	                        uiLanguage={uiLanguage}
+	                        onUsePrompt={onUseGuidancePrompt}
+	                        onDismiss={onDismissInputGuidance}
+	                      />
 	                      <AlignmentStrategyCard
 	                        strategy={alignmentStrategy}
+	                        uiLanguage={uiLanguage}
 	                        onApply={onApplyAlignmentStrategy}
 	                        onRefine={onRefineAlignmentStrategy}
 	                        onDismiss={onDismissAlignmentStrategy}
 	                      />
-	                      <NodeDetailCard
+                      <NodeDetailCard
                         selectedNode={selectedNode}
                         linkedNodes={linkedNodes}
                         currentUserRole={currentUserRole}
@@ -359,14 +456,16 @@ export default function RightAgentDrawer({
                         onShare={() => onSetNodeVisibility?.(selectedNode?.id, "shared")}
                         onSetVisibility={(nextVisibility) => onSetNodeVisibility?.(selectedNode?.id, nextVisibility)}
                         onClearSelection={onClearSelectedNode}
+                        uiLanguage={uiLanguage}
                       />
                       <AlignmentSummaryCard
                         selectedNode={selectedNode}
                         summary={alignmentSummary}
                         onSelectSignal={onAlignmentSignalSelect}
+                        uiLanguage={uiLanguage}
                       />
                       {isMeetingCapture ? (
-                        <DrawerMeetingCaptureSection meetingCaptureSummary={meetingCaptureSummary} />
+                        <DrawerMeetingCaptureSection meetingCaptureSummary={meetingCaptureSummary} uiLanguage={uiLanguage} />
                       ) : null}
 
                       {shouldShowActiveSuggestionCard ? (
@@ -378,7 +477,7 @@ export default function RightAgentDrawer({
                             className="font-heading line-clamp-1 text-xs font-semibold text-slate-800"
                             style={{ position: "relative", left: 3 }}
                           >
-                            {activeSuggestion.title}
+                            {activeSuggestion.localizedTitle || activeSuggestion.title}
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-1.5">
                             {[
@@ -403,15 +502,20 @@ export default function RightAgentDrawer({
                         onCommit={onCommitCandidateNodes}
                         onCommitAsPrivate={onCommitCandidateNodesAsPrivate}
                         onDiscard={onDiscardCandidateNodes}
+                        uiLanguage={uiLanguage}
                       />
 
                       <DrawerChatTranscript
                         chatMessages={chatMessages}
                         isChatLoading={isChatLoading}
+                        isChatConverting={isChatConverting}
+                        conversionError={chatConversionError}
                         activeSuggestion={activeSuggestion}
                         chatBottomRef={chatBottomRef}
+                        uiLanguage={uiLanguage}
                       />
                     </div>
+                    )}
                   </div>
 
                   <div className="shrink-0 pt-3">
@@ -442,6 +546,12 @@ export default function RightAgentDrawer({
                       >
                         <MicButtonIcon />
                       </button>
+                      <ModelProfileControl
+                        value={modelProfile}
+                        onChange={onModelProfileChange}
+                        uiLanguage={uiLanguage}
+                        disabled={isChatLoading || isMeetingCaptureLoading || isConceptLoading}
+                      />
                     </div>
 
                     <form onSubmit={handleChatSubmit} className="space-y-2">
@@ -462,16 +572,18 @@ export default function RightAgentDrawer({
                           </div>
                         ) : null}
                         <textarea
-                          value={chatInput}
-                          onChange={(event) => onChatInputChange?.(event.target.value)}
+                          value={isConceptStudio ? conceptInput : chatInput}
+                          onChange={(event) => isConceptStudio ? onConceptInputChange?.(event.target.value) : onChatInputChange?.(event.target.value)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
                               event.preventDefault();
                               handleChatSubmit(event);
                             }
                           }}
-                          placeholder={isMeetingCapture ? "Add one meeting turn or note block..." : selectedNode ? "Add a related thought..." : "Add a thought..."}
-                          disabled={isChatLoading || isMeetingCaptureLoading}
+                          placeholder={isConceptStudio
+                            ? uiLanguage === "ko" ? "고도화할 컨셉이나 방향을 입력하세요..." : uiLanguage === "ja" ? "磨きたいコンセプトや方向性を入力..." : "Describe the concept or direction to develop..."
+                            : isMeetingCapture ? copy.meetingPlaceholder : selectedNode ? copy.relatedPlaceholder : copy.thoughtPlaceholder}
+                          disabled={isChatLoading || isMeetingCaptureLoading || isConceptLoading}
                           rows={2}
                           className={`min-h-[68px] w-full resize-none border-none bg-transparent pr-11 text-[13px] font-medium leading-[1.45] outline-none ${
                             loadingOverlayText
@@ -481,35 +593,15 @@ export default function RightAgentDrawer({
                         />
                         <button
                           type="submit"
-                          disabled={isChatLoading || isMeetingCaptureLoading || !chatInput?.trim()}
+                          disabled={isChatLoading || isMeetingCaptureLoading || isConceptLoading || !(isConceptStudio ? conceptInput : chatInput)?.trim()}
                           className="absolute bottom-3.5 right-3.5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(97,129,95,0.35)] bg-[linear-gradient(136.99deg,rgba(199,255,232,0.28)_-0.49%,rgba(19,158,89,0.24)_142.16%),linear-gradient(0deg,rgba(147,205,186,0.2),rgba(147,205,186,0.2))] shadow-[0_6px_14px_rgba(61,107,79,0.10)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label="Send message"
+                          aria-label={copy.send}
                         >
                           <ArrowUp className="h-4 w-4 text-[#5A8054]" strokeWidth={2.1} />
                         </button>
                       </div>
                     </form>
 
-                    {activeSuggestion && chatMessages.length >= 2 && !isMeetingCapture && (
-                      <button
-                        type="button"
-                        onClick={onChatConvertToNodes}
-                        disabled={isChatConverting}
-                        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] border border-[#6F8A7B]/20 bg-[#7BA592] px-3 py-2.5 text-xs font-semibold text-white shadow-[0_6px_14px_rgba(61,107,79,0.10)] transition-colors hover:bg-[#6B907F] disabled:cursor-not-allowed disabled:opacity-55"
-                      >
-                        {isChatConverting ? (
-                          <>
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Creating nodes...
-                          </>
-                        ) : (
-                          <>
-                            <GitBranch className="h-3 w-3" />
-                            Convert to node candidates
-                          </>
-                        )}
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>

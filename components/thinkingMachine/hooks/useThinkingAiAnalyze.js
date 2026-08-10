@@ -6,6 +6,7 @@ import { getNodeSnapshot } from "@/components/thinkingMachine/utils/graphSnapsho
 import { mergeSuggestionUnique } from "@/components/thinkingMachine/utils/suggestionUtils";
 import { placeIncomingNodesPreservingLayout } from "@/lib/thinkingMachine/graphMerge";
 import { normalizeRelationLabel, normalizeVisibility } from "@/lib/thinkingMachine/nodeMeta";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
 export function useThinkingAiAnalyze({
   nodes,
@@ -21,6 +22,9 @@ export function useThinkingAiAnalyze({
   recordProjectActivity,
   animateViewportToNodes,
   setIsAnalyzing,
+  setInputGuidance,
+  uiLanguage = "en",
+  modelProfile = "auto",
   currentUserId,
   currentUserName = "You",
 }) {
@@ -56,12 +60,25 @@ export function useThinkingAiAnalyze({
             position: n.position,
           })),
           stage,
+          uiLanguage,
+          modelProfile,
         };
 
         const data = await analyze(payload);
 
-        const suggestionNodeData = data.nodes.find((n) => n.data.is_ai_generated);
-        const userNodeDatas = data.nodes
+        if (data?.status !== "ready" || data?.inputGuidance) {
+          setInputGuidance?.(data?.inputGuidance || null);
+          setDrawerMode("chat");
+          setIsDrawerOpen(true);
+          return;
+        }
+
+        setInputGuidance?.(null);
+
+        const responseNodes = Array.isArray(data?.nodes) ? data.nodes : [];
+        const responseEdges = Array.isArray(data?.edges) ? data.edges : [];
+        const suggestionNodeData = responseNodes.find((n) => n.data.is_ai_generated);
+        const userNodeDatas = responseNodes
           .filter((n) => !n.data.is_ai_generated)
           .map((n) => ({
             ...n,
@@ -73,9 +90,9 @@ export function useThinkingAiAnalyze({
             },
           }));
 
-        const suggestEdge = data.edges.find((e) => e.id.startsWith("e-suggest-"));
+        const suggestEdge = responseEdges.find((e) => e.id.startsWith("e-suggest-"));
         const highlightedMainNodeId = suggestEdge ? suggestEdge.source : null;
-        const rawEdges = data.edges.filter((e) => !e.id.startsWith("e-suggest-"));
+        const rawEdges = responseEdges.filter((e) => !e.id.startsWith("e-suggest-"));
 
         const rawNewNodes = userNodeDatas.map((n) => toReactFlowNode(n, highlightedMainNodeId));
         const enrichedNodes = placeIncomingNodesPreservingLayout(nodes, rawNewNodes, rawEdges, {
@@ -157,7 +174,8 @@ export function useThinkingAiAnalyze({
           error?.response?.data?.error ||
           error?.response?.data?.detail ||
           error?.message;
-        alert(serverMsg ? `AI Agent error: ${serverMsg}` : "AI Agent error. Please try again.");
+        const fallbackMessage = getWorkspaceCopy(uiLanguage).errors.analyze;
+        alert(serverMsg ? `AI Agent: ${serverMsg}` : fallbackMessage);
       } finally {
         setIsAnalyzing(false);
       }
@@ -174,10 +192,13 @@ export function useThinkingAiAnalyze({
       setEdges,
       setHighlightedNodeIds,
       setIsAnalyzing,
+      setInputGuidance,
       setIsDrawerOpen,
       setNodes,
       setSuggestions,
       stage,
+      uiLanguage,
+      modelProfile,
     ]
   );
 

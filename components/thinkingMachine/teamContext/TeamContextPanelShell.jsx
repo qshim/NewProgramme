@@ -1,8 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
-export default function TeamContextPanelShell({ membersCount = 0, children }) {
+export default function TeamContextPanelShell({ membersCount = 0, children, uiLanguage = "en" }) {
+  const copy = getWorkspaceCopy(uiLanguage).teamContext;
   return (
     <motion.div
       initial={{ opacity: 0, x: -16, y: 8 }}
@@ -15,13 +17,13 @@ export default function TeamContextPanelShell({ membersCount = 0, children }) {
         <div className="shrink-0 rounded-[22px] border border-white/75 bg-white/80 px-3.5 py-3 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Team context</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{copy.title}</div>
               <div className="mt-1 text-[12px] leading-relaxed text-slate-500">
-                Review teammate activity and ask the agent what likely changed in the project context.
+                {copy.description}
               </div>
             </div>
             <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-              {membersCount} members
+              {membersCount} {copy.members}
             </div>
           </div>
         </div>

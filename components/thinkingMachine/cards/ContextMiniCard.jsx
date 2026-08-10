@@ -6,6 +6,8 @@ export default function ContextMiniCard({ item, isActive, onSelect }) {
   const normalized = normalizeNodeData(item);
   const colors = getTypeMeta(normalized.category);
   const suggestionTags = normalizeSuggestionTags(item?.suggestionTags || item?.tags, normalized);
+  const title = item?.localizedTitle || item?.title || "";
+  const content = item?.localizedContent || item?.content || "";
 
   return (
     <button
@@ -16,12 +18,12 @@ export default function ContextMiniCard({ item, isActive, onSelect }) {
           : "border-white/70 bg-white/50 hover:bg-white/60"
       }`}
       onClick={() => onSelect?.(item)}
-      aria-label={`Select context card ${item?.title ?? ""}`}
+      aria-label={`Select context card ${title}`}
     >
       <div className={`line-clamp-2 text-[11px] font-semibold leading-tight ${isActive ? colors.text : "text-slate-700"}`}>
-        {item.title}
+        {title}
       </div>
-      <div className="mt-1 line-clamp-3 flex-1 text-[10px] leading-tight text-slate-500">{item.content}</div>
+      <div className="mt-1 line-clamp-3 flex-1 text-[10px] leading-tight text-slate-500">{content}</div>
       <div className="mt-2 flex min-h-[19px] flex-wrap items-end gap-1.5 pr-2">
         {[
           ["reasoning", suggestionTags.reasoning],

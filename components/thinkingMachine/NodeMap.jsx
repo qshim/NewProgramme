@@ -45,6 +45,7 @@ export default function NodeMap({
     conflictExplainLoadingByNodeId,
     onToggleConflictPopover,
     onExplainConflict,
+    uiLanguage = "en",
 }) {
 
     const nodeTypes = useMemo(
@@ -70,6 +71,7 @@ export default function NodeMap({
         conflictExplainLoadingByNodeId,
         onToggleConflictPopover,
         onExplainConflict,
+        uiLanguage,
     });
 
     return (

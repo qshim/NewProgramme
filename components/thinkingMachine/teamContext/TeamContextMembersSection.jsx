@@ -1,8 +1,9 @@
 "use client";
 
 import ActorGlyph from "@/components/thinkingMachine/teamContext/ActorGlyph";
+import { getWorkspaceCopy } from "@/components/thinkingMachine/i18n/workspaceCopy";
 
-function MemberButton({ member, isActive, isCurrentUser, onClick }) {
+function MemberButton({ member, isActive, isCurrentUser, onClick, copy }) {
   return (
     <button
       type="button"
@@ -16,8 +17,8 @@ function MemberButton({ member, isActive, isCurrentUser, onClick }) {
       <ActorGlyph actor={member} size="md" />
       <div className="min-w-0 flex-1">
         <div className="line-clamp-1 text-[12px] font-semibold text-slate-800">
-          {member?.name || "Unknown teammate"}
-          {isCurrentUser ? " (You)" : ""}
+          {member?.name || copy.unknownTeammate}
+          {isCurrentUser ? ` (${copy.you})` : ""}
         </div>
         <div className="mt-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-400">{member?.role || "editor"}</div>
       </div>
@@ -30,17 +31,19 @@ export default function TeamContextMembersSection({
   selectedMemberId,
   currentUserId,
   onSelectMember,
+  uiLanguage = "en",
 }) {
+  const copy = getWorkspaceCopy(uiLanguage).teamContext;
   return (
     <div className="mt-3 shrink-0 rounded-[22px] border border-white/75 bg-white/82 p-3.5 shadow-sm">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Members</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{copy.membersTitle}</div>
         <button
           type="button"
           onClick={() => onSelectMember?.(null)}
           className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
         >
-          All
+          {copy.all}
         </button>
       </div>
       <div className="mt-3 flex flex-col gap-2">
@@ -52,10 +55,11 @@ export default function TeamContextMembersSection({
               isActive={member.id === selectedMemberId}
               isCurrentUser={member.id === currentUserId}
               onClick={() => onSelectMember?.(member.id)}
+              copy={copy}
             />
           ))
         ) : (
-          <div className="rounded-xl bg-slate-50/90 px-3 py-2 text-[11px] text-slate-400">No teammates registered yet.</div>
+          <div className="rounded-xl bg-slate-50/90 px-3 py-2 text-[11px] text-slate-400">{copy.noMembers}</div>
         )}
       </div>
     </div>
